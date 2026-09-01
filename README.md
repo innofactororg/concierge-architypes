@@ -29,13 +29,23 @@ seed. Both halves are validated before anything is downloaded or committed: a `s
 within the architype's own prefix, and a `target` must stay within the spoke repository root —
 checked *after* `[#_..._#]` token substitution, so a token cannot expand into a traversal segment.
 
+## The reserved token vocabulary, the manifest schema and the marker schema
+
+The `[#_..._#]` substitution tokens, the architype `manifest.json` schema and the
+`.concierge/workload.json` ownership-marker schema are documented once, in
+[`docs/main/concierge-seeding-contract.md`](https://github.com/innofactororg/concierge-app/blob/main/docs/main/concierge-seeding-contract.md)
+in the `concierge-app` repository — the repository that also holds the code enforcing it
+(`Get-NewSpokeReservedToken`, `Test-NewSpokeReservedToken`). This README does not restate that
+table: architype authors read the contract, not a second copy that can drift from it.
+
 ## Contents
 
 | Path | Format | Notes |
 |---|---|---|
-| `network.json` | ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) | Current network architype |
-| `network.bicep` | Bicep | Current network architype |
-| `network/main.tf`, `network/main.auto.tfvars` | Terraform | Current network architype |
+| `network/manifest.json` | Manifest (`schemaVersion` 1) | The `network` architype, manifest-driven: NOSP-27's consolidated multi-environment model — shared `main.bicep`, `environments/{env}/main.bicepparam` (folder-form), one `.pipelines/azure-pipeline.yaml`, `ps-rule.yaml`, `bicepconfig.json`. AVM from the Bicep public registry; no vendored `modules/` tree. |
+| `network.json` | ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) | Azure-Deploy-era network architype. Manifest pending (D-50). |
+| `network.bicep` | Bicep, single file | Superseded by `network/main.bicep` for Azure Repos targets running the consolidated model. Manifest pending (D-50). |
+| `network/main.tf`, `network/main.auto.tfvars` | Terraform | Terraform network architype. Manifest pending (D-50). |
 
 ## What is deliberately not here
 

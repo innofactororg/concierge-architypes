@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "configFile": {
+    "source": "environments/test/main.bicepparam",
+    "target": "environments/[#_service.environmentName_#]/main.bicepparam"
+  },
+  "files": [
+    {
+      "source": "main.bicep",
+      "target": "main.bicep"
+    },
+    {
+      "source": "ps-rule.yaml",
+      "target": "ps-rule.yaml"
+    },
+    {
+      "source": "bicepconfig.json",
+      "target": "bicepconfig.json"
+    },
+    {
+      "source": ".pipelines/azure-pipeline.yaml",
+      "target": ".pipelines/azure-pipeline.yaml"
+    }
+  ]
+}
