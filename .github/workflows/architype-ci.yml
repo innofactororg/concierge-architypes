@@ -1,0 +1,172 @@
+name: Architype Conformance CI
+
+# D-65: validate every published architype's manifest, reserved-token and canonical-parameter-name
+# conformance, Bicep build, PSRule, and that every manifest source resolves over raw HTTP - the
+# same bar Phase 1 set: no tests meant no evidence, and this repository has had no CI of any kind
+# until this workflow.
+#
+# No 'branches:' key on either trigger - runs for a push or a pull request into ANY branch, not
+# only main. Deliberate: this repository has no branch policies today (ADR-0003's own observation
+# about ks5cae), and 02-12 Task 2 needs this job green on a feature-branch pull request BEFORE
+# Task 3 merges it - the merge's precondition is "green on the head commit", not "green on main".
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  vocabulary-parity:
+    name: Reserved-token vocabulary parity
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout concierge-architypes
+        uses: actions/checkout@v4
+
+      # concierge-app is a SEPARATE repository - the code that enforces the seeding contract
+      # (Get-NewSpokeReservedToken, Test-NewSpokeReservedToken) lives there, not here
+      # (docs/main/concierge-seeding-contract.md SS0: "with the code that enforces it (D-43),
+      # rather than in the vault or in the architypes repository"). Pinned to v3beta1 - the
+      # branch this phase's work lands on - rather than main, so this job tracks the same
+      # contract version the live engine actually runs.
+      - name: Checkout concierge-app (vocabulary source of truth)
+        uses: actions/checkout@v4
+        with:
+          repository: innofactororg/concierge-app
+          ref: v3beta1
+          path: concierge-app
+
+      - name: Report pwsh version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "pwsh version: $($PSVersionTable.PSVersion)"
+
+      # -----------------------------------------------------------------------------------------
+      # Compares tools/ReservedTokens.psd1 (this checker's own copy) against
+      # Get-NewSpokeReservedToken's live output. A mismatch fails the job BEFORE any architype is
+      # validated against a vocabulary that might have silently drifted (T-02-1202).
+      # -----------------------------------------------------------------------------------------
+      - name: Assert vocabulary parity with Get-NewSpokeReservedToken
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # Export-ModuleMember at the bottom of this file only works inside a module -
+          # dot-sourcing it standalone (all this cross-check needs is the function definitions,
+          # not a full module load) throws on that one line. The function itself is already
+          # defined by the time that line runs, so suppress just that expected error.
+          try {
+            . ./concierge-app/src/Modules/Innofactor.Concierge/2026.4.0/Public/Get-NewSpokeReservedToken.ps1
+          } catch {
+            if ($_.Exception.Message -notmatch 'Export-ModuleMember') { throw }
+          }
+          $live = @(Get-NewSpokeReservedToken | ForEach-Object {
+            [pscustomobject]@{ Token = $_.Token; CanonicalParameter = $_.CanonicalParameter; Indexed = [bool]$_.Indexed }
+          } | Sort-Object -Property Token)
+
+          $local = @((Import-PowerShellDataFile -Path ./tools/ReservedTokens.psd1).Tokens | ForEach-Object {
+            [pscustomobject]@{ Token = $_.Token; CanonicalParameter = $_.CanonicalParameter; Indexed = [bool]$_.Indexed }
+          } | Sort-Object -Property Token)
+
+          Write-Host "concierge-app (live): $($live.Count) token(s)"
+          Write-Host "tools/ReservedTokens.psd1 (local): $($local.Count) token(s)"
+
+          $diff = Compare-Object -ReferenceObject $live -DifferenceObject $local -Property Token, CanonicalParameter, Indexed
+          if ($diff) {
+            Write-Host "::error::tools/ReservedTokens.psd1 has drifted from Get-NewSpokeReservedToken"
+            $diff | Format-Table | Out-String | Write-Host
+            throw "Vocabulary parity check failed - $($diff.Count) difference(s) found"
+          }
+          Write-Host "Vocabulary parity OK: $($live.Count) tokens identical in both repositories"
+
+  discover:
+    name: Discover architypes
+    runs-on: ubuntu-22.04
+    outputs:
+      architypes: ${{ steps.find.outputs.architypes }}
+    steps:
+      - name: Checkout concierge-architypes
+        uses: actions/checkout@v4
+
+      # Discovers by manifest.json PRESENCE, not a hardcoded folder list (D-65) - adding an
+      # architype means adding its manifest.json, and CI picks it up on the next push with no
+      # workflow edit required.
+      - name: Find every architype folder
+        id: find
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folders = @(
+            Get-ChildItem -Path . -Filter 'manifest.json' -Recurse -File |
+              Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+              ForEach-Object { (Split-Path -Path $_.FullName -Parent | Resolve-Path -Relative) -replace '^\.[\\/]', '' } |
+              Sort-Object
+          )
+          if ($folders.Count -eq 0) {
+            throw 'No manifest.json found anywhere in the repository'
+          }
+          Write-Host "Discovered architype(s): $($folders -join ', ')"
+          $json = $folders | ConvertTo-Json -Compress -AsArray
+          "architypes=$($json)" >> $env:GITHUB_OUTPUT
+
+  conformance:
+    name: Architype conformance (${{ matrix.architype }})
+    needs: [vocabulary-parity, discover]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        architype: ${{ fromJson(needs.discover.outputs.architypes) }}
+    steps:
+      - name: Checkout concierge-architypes
+        uses: actions/checkout@v4
+
+      - name: Report pwsh version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "pwsh version: $($PSVersionTable.PSVersion)"
+
+      - name: Install and report Bicep CLI version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          az bicep install
+          az bicep version
+
+      # PSRule.Rules.Azure is PINNED (not floated like ks5cae/salgsl.IaC's live pipelines) -
+      # deterministic architype CI matters more here than mirroring the live estate's convention:
+      # a floating version could turn this job red with no change to this repository, silently
+      # blocking every future architype pull request. Az.Resources is left unpinned - it is a
+      # transitive dependency PSRule.Rules.Azure pulls in for ARM/Bicep expansion, not a rule
+      # surface this job is asserting against. See 02-12-SUMMARY.md for the full rationale.
+      - name: Install PSRule.Rules.Azure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module -Name Az.Resources -Force -SkipPublisherCheck -Scope CurrentUser
+          Install-Module -Name PSRule.Rules.Azure -RequiredVersion 1.47.0 -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: Run Test-ArchitypeConformance.ps1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tools/Test-ArchitypeConformance.ps1 -Path ./${{ matrix.architype }} -Ref ${{ github.event.pull_request.head.ref || github.ref_name }}
+          if ($LASTEXITCODE -ne 0) {
+            throw "Architype conformance failed for ${{ matrix.architype }}"
+          }
+
+      - name: Write job summary
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          "## Architype Conformance: ${{ matrix.architype }}`n`nSee the 'Run Test-ArchitypeConformance.ps1' step log above for the full pass/fail breakdown." >> $env:GITHUB_STEP_SUMMARY

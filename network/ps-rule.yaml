@@ -5,6 +5,7 @@ binding:
     - resourceType
 configuration:
   AZURE_PARAMETER_FILE_EXPANSION: true
+  AZURE_BICEP_FILE_EXPANSION: true
   AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
 execution:
   unprocessedObject: Ignore

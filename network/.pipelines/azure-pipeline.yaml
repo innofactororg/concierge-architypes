@@ -16,7 +16,7 @@ name: $(BuildDefinitionName)_$(date:yyyyMMdd)$(rev:.r)
 # parameters (`serviceConnection`, `SUBSCRIPTION_ID`, `environmentName`, `IN_TEMPLATE_PARAMS`).
 #
 # `<from target config>` and `<resolved>` below are deliberate placeholders, not reserved
-# `[#_..._#]` tokens — this file holds both environments' stages at once (unlike
+# substitution tokens — this file holds both environments' stages at once (unlike
 # environments/{env}/main.bicepparam, which is one file per environment), so a single
 # whole-file token substitution pass cannot resolve two different per-stage values from one
 # token. Resolving these into real values at pipeline-registration time is Phase 2.1 engine
