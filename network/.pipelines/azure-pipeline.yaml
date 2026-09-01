@@ -1,0 +1,208 @@
+name: $(BuildDefinitionName)_$(date:yyyyMMdd)$(rev:.r)
+
+#===============================================================================
+# network — Consolidated Multi-Environment Deployment Pipeline
+#===============================================================================
+# Model: NOSP-27 ADR-0001 (project-level), repo-local ADR-0003 in ks5cae:
+#        docs/adr/0003-consolidated-multi-environment-model.md.
+#        Reference implementations: ks5cae, salgsl.IaC.
+#
+#   Pull request  ->  Plan_Test + Plan_Production          (what-if only, NO deploy)
+#   Merge to main ->  Plan_Test -> Deploy_Test -> Plan_Production -> Deploy_Production
+#
+# Plan_Production only runs if Deploy_Test SUCCEEDED. Promotion safety is enforced by the
+# pipeline, not by merge discipline. One pipeline, no variable groups (D-11) — shared values
+# are the inline `variables:` block below; per-environment values are stage template
+# parameters (`serviceConnection`, `SUBSCRIPTION_ID`, `environmentName`, `IN_TEMPLATE_PARAMS`).
+#
+# `<from target config>` and `<resolved>` below are deliberate placeholders, not reserved
+# `[#_..._#]` tokens — this file holds both environments' stages at once (unlike
+# environments/{env}/main.bicepparam, which is one file per environment), so a single
+# whole-file token substitution pass cannot resolve two different per-stage values from one
+# token. Resolving these into real values at pipeline-registration time is Phase 2.1 engine
+# work (D-16, D-58), out of this plan's scope. The exact notation mirrors
+# 02-CONTEXT.md's own worked example of this pipeline stage shape.
+#===============================================================================
+
+#===============================================================================
+# TRIGGERS
+#===============================================================================
+# main only. Path filters stop docs-only changes queuing a production deploy.
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - main.bicep
+      - modules/**
+      - environments/**
+      - ps-rule.yaml
+      - .pipelines/**
+
+# THIS BLOCK DOES NOTHING on Azure Repos Git — Azure Pipelines only honours a YAML `pr:`
+# trigger for GitHub / Bitbucket repos. PR validation on Azure Repos is a BRANCH POLICY, not a
+# pipeline trigger (ADR-0003, "Known gaps"). Retained so intent is visible; Build Validation
+# branch policy creation is D-54, out of this plan's scope (this plan writes architype content
+# only — it does not register a pipeline or create branch policies).
+pr:
+  autoCancel: true
+  drafts: false
+  branches:
+    include:
+      - main
+
+#===============================================================================
+# EXTERNAL TEMPLATES
+#===============================================================================
+# bicep-action is the deployment engine (D-14) — the Azure-Deploy / network.json ARM-era path
+# for Azure Repos targets (its container-address and structure/container-version fields) does
+# not appear anywhere in this file.
+resources:
+  repositories:
+    - repository: bicep_action
+      type: github
+      name: InnofactorOrg/bicep-action
+      ref: refs/heads/main
+      # Innofactor-Bicep-Action already exists as a GitHub service connection in Elmera IaC;
+      # Concierge creates nothing for it (D-15). The endpoint name itself is fixed — the same
+      # connection serves every workload in this ADO project — so it is a literal here rather
+      # than a per-workload substitution token.
+      endpoint: Innofactor-Bicep-Action
+
+#===============================================================================
+# COMMON VARIABLES — shared across every stage. No `- group:` entry anywhere in this file (D-11).
+#===============================================================================
+variables:
+  - name: WORKFLOW_VERSION
+    value: main
+  - name: IN_PROVIDERS
+    value: "Microsoft.Advisor,Microsoft.AlertsManagement,Microsoft.Authorization,Microsoft.Consumption,Microsoft.EventGrid,microsoft.insights,Microsoft.ManagedIdentity,Microsoft.Management,Microsoft.Network,Microsoft.PolicyInsights,Microsoft.ResourceHealth,Microsoft.Resources,Microsoft.Security"
+  - name: RULE_BASELINE
+    value: Azure.Default
+  - name: RULE_MODULES
+    value: Az.Resources,PSRule.Rules.Azure
+  - name: RULE_OPTION
+    value: ps-rule.yaml
+  - name: IN_TEMPLATE
+    value: main.bicep
+  - name: IN_LOCATION
+    value: westeurope
+  - name: IN_SCOPE
+    value: sub
+  - name: IN_SEVERITY
+    value: INFO
+  - name: COST_THRESHOLD
+    value: -1
+  # ACE cannot parse ARM JSON with languageVersion 2.0 (emitted by current Bicep) — empty
+  # skips the cost-estimate step. Matches ks5cae and salgsl.IaC.
+  - name: VERSION_ACE
+    value: ''
+  - name: PSRULE_AZURE_RESOURCE_MODULE_NOWARN
+    value: true
+  - name: WAIT_COUNT
+    value: 30
+  - name: WAIT_SECONDS
+    value: 10
+
+#===============================================================================
+# STAGES
+#===============================================================================
+stages:
+
+  #=============================================================================
+  # PULL REQUEST — validate BOTH environments. No deploys.
+  # Requires a Build Validation branch policy to run at all (D-54, out of this plan's scope —
+  # see the `pr:` note above).
+  #=============================================================================
+  - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+    - template: .azuredevops/templates/plan-stage.yml@bicep_action
+      parameters:
+        stageName: Plan_Test
+        displayName: 'Plan - Test'
+        environmentName: '<from target config>' # not hardcoded to the retired ADO Environment naming vocabulary (D-16)
+        serviceConnection: 'AZ_SP_sub_t-[#_service.name_#]_Owner'
+        variables:
+          ARTIFACT_IDENTIFIER: test
+          SUBSCRIPTION_ID: '<resolved>'
+          ENVIRONMENT: '<from target config>'
+          IN_TEMPLATE_PARAMS: environments/test/main.bicepparam
+
+    - template: .azuredevops/templates/plan-stage.yml@bicep_action
+      parameters:
+        stageName: Plan_Production
+        displayName: 'Plan - Production'
+        environmentName: '<from target config>'
+        serviceConnection: 'AZ_SP_sub_p-[#_service.name_#]_Owner'
+        variables:
+          ARTIFACT_IDENTIFIER: production
+          SUBSCRIPTION_ID: '<resolved>'
+          ENVIRONMENT: '<from target config>'
+          IN_TEMPLATE_PARAMS: environments/production/main.bicepparam
+
+  #=============================================================================
+  # MAIN — progressive promotion: test must DEPLOY before prod may PLAN.
+  #=============================================================================
+  - ${{ if and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main')) }}:
+
+    # 1. Plan test
+    - template: .azuredevops/templates/plan-stage.yml@bicep_action
+      parameters:
+        stageName: Plan_Test
+        displayName: 'Plan - Test'
+        environmentName: '<from target config>'
+        serviceConnection: 'AZ_SP_sub_t-[#_service.name_#]_Owner'
+        variables:
+          ARTIFACT_IDENTIFIER: test
+          SUBSCRIPTION_ID: '<resolved>'
+          ENVIRONMENT: '<from target config>'
+          IN_TEMPLATE_PARAMS: environments/test/main.bicepparam
+
+    # 2. Deploy test — gated by the ADO Environment's approval (requesterCannotBeApprover: true)
+    - template: .azuredevops/templates/deploy-stage.yml@bicep_action
+      parameters:
+        stageName: Deploy_Test
+        displayName: 'Deploy - Test'
+        dependsOn:
+          - Plan_Test
+        planStageName: Plan_Test
+        planJobName: plan
+        environmentName: '<from target config>'
+        serviceConnection: 'AZ_SP_sub_t-[#_service.name_#]_Owner'
+        variables:
+          ARTIFACT_IDENTIFIER: test_deploy
+          SUBSCRIPTION_ID: '<resolved>'
+          ENVIRONMENT: '<from target config>'
+          IN_TEMPLATE_PARAMS: environments/test/main.bicepparam
+
+    # 3. Plan production — ONLY if test actually deployed. This is the promotion gate.
+    - template: .azuredevops/templates/plan-stage.yml@bicep_action
+      parameters:
+        stageName: Plan_Production
+        displayName: 'Plan - Production'
+        dependsOn:
+          - Deploy_Test
+        environmentName: '<from target config>'
+        serviceConnection: 'AZ_SP_sub_p-[#_service.name_#]_Owner'
+        variables:
+          ARTIFACT_IDENTIFIER: production
+          SUBSCRIPTION_ID: '<resolved>'
+          ENVIRONMENT: '<from target config>'
+          IN_TEMPLATE_PARAMS: environments/production/main.bicepparam
+
+    # 4. Deploy production — gated by the ADO Environment's approval (requesterCannotBeApprover: true)
+    - template: .azuredevops/templates/deploy-stage.yml@bicep_action
+      parameters:
+        stageName: Deploy_Production
+        displayName: 'Deploy - Production (approval required)'
+        dependsOn:
+          - Plan_Production
+        planStageName: Plan_Production
+        planJobName: plan
+        environmentName: '<from target config>'
+        serviceConnection: 'AZ_SP_sub_p-[#_service.name_#]_Owner'
+        variables:
+          ARTIFACT_IDENTIFIER: production_deploy
+          SUBSCRIPTION_ID: '<resolved>'
+          ENVIRONMENT: '<from target config>'
+          IN_TEMPLATE_PARAMS: environments/production/main.bicepparam
