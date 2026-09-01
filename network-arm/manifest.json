@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "source": "network.bicep",
+      "target": "network.bicep"
+    },
+    {
+      "source": "network.json",
+      "target": "network.json"
+    }
+  ]
+}

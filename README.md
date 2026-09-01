@@ -40,12 +40,33 @@ table: architype authors read the contract, not a second copy that can drift fro
 
 ## Contents
 
-| Path | Format | Notes |
+Every architype below is manifest-driven (`manifest.json`, `schemaVersion` 1) — D-50 retires the
+single-file seeding fallback, so every published architype carries a manifest, not only the
+current default.
+
+| Architype | Format | Notes |
 |---|---|---|
-| `network/manifest.json` | Manifest (`schemaVersion` 1) | The `network` architype, manifest-driven: NOSP-27's consolidated multi-environment model — shared `main.bicep`, `environments/{env}/main.bicepparam` (folder-form), one `.pipelines/azure-pipeline.yaml`, `ps-rule.yaml`, `bicepconfig.json`. AVM from the Bicep public registry; no vendored `modules/` tree. |
-| `network.json` | ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) | Azure-Deploy-era network architype. Manifest pending (D-50). |
-| `network.bicep` | Bicep, single file | Superseded by `network/main.bicep` for Azure Repos targets running the consolidated model. Manifest pending (D-50). |
-| `network/main.tf`, `network/main.auto.tfvars` | Terraform | Terraform network architype. Manifest pending (D-50). |
+| `network/` | Manifest (`schemaVersion` 1), Bicep | The **default** architype (`DefaultArchitype`): NOSP-27's consolidated multi-environment model — shared `main.bicep`, `environments/{env}/main.bicepparam` (folder-form), one `.pipelines/azure-pipeline.yaml`, `ps-rule.yaml`, `bicepconfig.json`. AVM from the Bicep public registry; no vendored `modules/` tree. |
+| `network-terraform/` | Manifest (`schemaVersion` 1), Terraform | Terraform network architype. Declares no pipeline — Terraform under the consolidated model is deferred work. |
+| `network-arm/` | Manifest (`schemaVersion` 1), ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) + single-file Bicep | Azure-Deploy-era network architype — legacy for Azure Repos targets, where `bicep-action` is now the deployment engine (D-14). Preserved, not promoted; see [`network-arm/README.md`](network-arm/README.md). |
+
+### Renamed from a prior published shape — breaking change for direct raw-URL consumers
+
+The two pre-existing architypes were relocated by `git mv` (history preserved) so that `network/`
+holds only the current consolidated Bicep model:
+
+| Old raw path | New raw path |
+|---|---|
+| `{ArchitypesUri}/network/main.tf` | `{ArchitypesUri}/network-terraform/main.tf` |
+| `{ArchitypesUri}/network/main.auto.tfvars` | `{ArchitypesUri}/network-terraform/main.auto.tfvars` |
+| `{ArchitypesUri}/network.bicep` | `{ArchitypesUri}/network-arm/network.bicep` |
+| `{ArchitypesUri}/network.json` | `{ArchitypesUri}/network-arm/network.json` |
+
+Concierge itself addresses an architype by name (`Architype` app setting / per-request value), so
+this is a rename, not a code change — but anything that fetched the **old raw paths directly**
+(outside Concierge's own manifest-driven or single-file seeding logic) breaks the moment this
+lands on `main`. See `02-12-SUMMARY.md` in `concierge-app`'s `.planning/` for the pre-merge
+external-consumer check this rename required.
 
 ## What is deliberately not here
 
