@@ -157,16 +157,24 @@ jobs:
 
       - name: Run Test-ArchitypeConformance.ps1
         shell: pwsh
+        # Expressions go through env, never into the run body: they are substituted before pwsh
+        # parses the script, and a fork's branch name or a directory name is attacker-controlled
+        # (CR-11).
+        env:
+          ARCHITYPE: ${{ matrix.architype }}
+          TARGET_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
-          & ./tools/Test-ArchitypeConformance.ps1 -Path ./${{ matrix.architype }} -Ref ${{ github.event.pull_request.head.ref || github.ref_name }}
+          & ./tools/Test-ArchitypeConformance.ps1 -Path "./$($env:ARCHITYPE)" -Ref $env:TARGET_REF
           if ($LASTEXITCODE -ne 0) {
-            throw "Architype conformance failed for ${{ matrix.architype }}"
+            throw "Architype conformance failed for $($env:ARCHITYPE)"
           }
 
       - name: Write job summary
         if: always()
         shell: pwsh
+        env:
+          ARCHITYPE: ${{ matrix.architype }}
         run: |
           $ErrorActionPreference = 'Stop'
-          "## Architype Conformance: ${{ matrix.architype }}`n`nSee the 'Run Test-ArchitypeConformance.ps1' step log above for the full pass/fail breakdown." >> $env:GITHUB_STEP_SUMMARY
+          "## Architype Conformance: $($env:ARCHITYPE)`n`nSee the 'Run Test-ArchitypeConformance.ps1' step log above for the full pass/fail breakdown." >> $env:GITHUB_STEP_SUMMARY
