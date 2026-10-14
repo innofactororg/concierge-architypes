@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "hubType": "vnet",
+  "repository": {
+    "provider": "AzureRepos",
+    "organization": "fjordkraft",
+    "project": "Elmera IaC",
+    "name": "p-we1net",
+    "targetBranch": "main"
+  },
+  "branchNameTemplate": "concierge/spoke-[#_service.environment_#]-[#_service.name_#]",
+  "files": [
+    {
+      "source": "ipam-spoke.yaml",
+      "target": "ipam/spokes/[#_service.environment_#]-[#_service.name_#].yaml",
+      "mode": "addOnly"
+    }
+  ],
+  "completion": { "strategy": "autoComplete", "mergeStrategy": "squash", "deleteSourceBranch": true }
+}
