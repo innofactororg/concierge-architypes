@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "configFile": {
+    "source": "main.auto.tfvars",
+    "target": "environments/[#_service.environmentName_#]/main.auto.tfvars"
+  },
+  "files": [
+    {
+      "source": "main.tf",
+      "target": "main.tf"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+binding:
+  preferTargetInfo: true
+  targetType:
+    - type
+    - resourceType
+configuration:
+  AZURE_PARAMETER_FILE_EXPANSION: true
+  AZURE_BICEP_FILE_EXPANSION: true
+  AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
+execution:
+  unprocessedObject: Ignore
+include:
+  module:
+    - Az.Resources
+    - PSRule.Rules.Azure
+input:
+  pathIgnore:
+    - '**/bicepconfig.json'
+    - '**/modules/**/*.bicep'
+output:
+  culture:
+    - en-US
+  footer: RuleCount
+  format: Markdown
+  jobSummaryPath: psrule_summary.md
+  outcome: Processed
+  style: Detect
+rule:
+  exclude:
+    - Azure.Template.Resources
+    - Azure.Template.UseDescriptions
+    - Azure.Resource.UseTags
+    - Azure.NSG.LateralTraversal
+    - Azure.VNET.SingleDNS
+    - Azure.VNET.PrivateSubnet
+    - Azure.Deployment.SecureParameter

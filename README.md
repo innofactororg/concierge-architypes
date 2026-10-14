@@ -29,13 +29,44 @@ seed. Both halves are validated before anything is downloaded or committed: a `s
 within the architype's own prefix, and a `target` must stay within the spoke repository root —
 checked *after* `[#_..._#]` token substitution, so a token cannot expand into a traversal segment.
 
+## The reserved token vocabulary, the manifest schema and the marker schema
+
+The `[#_..._#]` substitution tokens, the architype `manifest.json` schema and the
+`.concierge/workload.json` ownership-marker schema are documented once, in
+[`docs/main/concierge-seeding-contract.md`](https://github.com/innofactororg/concierge-app/blob/main/docs/main/concierge-seeding-contract.md)
+in the `concierge-app` repository — the repository that also holds the code enforcing it
+(`Get-NewSpokeReservedToken`, `Test-NewSpokeReservedToken`). This README does not restate that
+table: architype authors read the contract, not a second copy that can drift from it.
+
 ## Contents
 
-| Path | Format | Notes |
+Every architype below is manifest-driven (`manifest.json`, `schemaVersion` 1) — D-50 retires the
+single-file seeding fallback, so every published architype carries a manifest, not only the
+current default.
+
+| Architype | Format | Notes |
 |---|---|---|
-| `network.json` | ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) | Current network architype |
-| `network.bicep` | Bicep | Current network architype |
-| `network/main.tf`, `network/main.auto.tfvars` | Terraform | Current network architype |
+| `network/` | Manifest (`schemaVersion` 1), Bicep | The **default** architype (`DefaultArchitype`): NOSP-27's consolidated multi-environment model — shared `main.bicep`, `environments/{env}/main.bicepparam` (folder-form), one `.pipelines/azure-pipeline.yaml`, `ps-rule.yaml`, `bicepconfig.json`. AVM from the Bicep public registry; no vendored `modules/` tree. |
+| `network-terraform/` | Manifest (`schemaVersion` 1), Terraform | Terraform network architype. Declares no pipeline — Terraform under the consolidated model is deferred work. |
+| `network-arm/` | Manifest (`schemaVersion` 1), ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) + single-file Bicep | Azure-Deploy-era network architype — legacy for Azure Repos targets, where `bicep-action` is now the deployment engine (D-14). Preserved, not promoted; see [`network-arm/README.md`](network-arm/README.md). |
+
+### Renamed from a prior published shape — breaking change for direct raw-URL consumers
+
+The two pre-existing architypes were relocated by `git mv` (history preserved) so that `network/`
+holds only the current consolidated Bicep model:
+
+| Old raw path | New raw path |
+|---|---|
+| `{ArchitypesUri}/network/main.tf` | `{ArchitypesUri}/network-terraform/main.tf` |
+| `{ArchitypesUri}/network/main.auto.tfvars` | `{ArchitypesUri}/network-terraform/main.auto.tfvars` |
+| `{ArchitypesUri}/network.bicep` | `{ArchitypesUri}/network-arm/network.bicep` |
+| `{ArchitypesUri}/network.json` | `{ArchitypesUri}/network-arm/network.json` |
+
+Concierge itself addresses an architype by name (`Architype` app setting / per-request value), so
+this is a rename, not a code change — but anything that fetched the **old raw paths directly**
+(outside Concierge's own manifest-driven or single-file seeding logic) breaks the moment this
+lands on `main`. See `02-12-SUMMARY.md` in `concierge-app`'s `.planning/` for the pre-merge
+external-consumer check this rename required.
 
 ## What is deliberately not here
 

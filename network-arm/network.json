@@ -6,8 +6,8 @@
     "[#_service.name_#]": "[#_service.name_#]",
     "[#_service.subscription.id_#]": "[#_service.subscription.id_#]",
     "[#_service.vnet.addressPrefix_#]": "10.0.0.0/25",
-    "[#_service.vnet.PeFrontendSubnet.addressPrefix_#]": "10.0.0.0/27",
-    "[#_service.vnet.ScalableSubnet.addressPrefix_#]": "10.0.0.32/27"
+    "[#_service.vnet.subnet.00.addressPrefix_#]": "10.0.0.0/27",
+    "[#_service.vnet.subnet.01.addressPrefix_#]": "10.0.0.32/27"
   },
   "namingStandard": {
     "subscriptions": "[{environment}-]{service}",
@@ -74,7 +74,7 @@
                 "subnets": [
                   {
                     "name": "PeFrontendSubnet",
-                    "addressPrefix": "[#_service.vnet.PeFrontendSubnet.addressPrefix_#]",
+                    "addressPrefix": "[#_service.vnet.subnet.00.addressPrefix_#]",
                     "networkSecurityGroup": {
                       "id": "[@_res.arm.network.nsg.PeFrontendSubnet.id_@]"
                     },
@@ -82,7 +82,7 @@
                   },
                   {
                     "name": "ScalableSubnet",
-                    "addressPrefix": "[#_service.vnet.ScalableSubnet.addressPrefix_#]",
+                    "addressPrefix": "[#_service.vnet.subnet.01.addressPrefix_#]",
                     "delegations": [
                       {
                         "name": "Microsoft.App.environments",

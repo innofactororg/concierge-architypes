@@ -1,0 +1,4 @@
+# Runtime output from tools/Test-ArchitypeConformance.ps1 and PSRule runs against this repo's
+# ps-rule.yaml files (jobSummaryPath), never repository content.
+psrule_summary.md
+**/._conformance_check.bicepparam
