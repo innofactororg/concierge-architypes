@@ -17,6 +17,8 @@
     @{ Token = '[#_service.environment_#]'; CanonicalParameter = 'environmentCode'; Indexed = $false; Sample = 't' }
     @{ Token = '[#_service.environmentName_#]'; CanonicalParameter = 'environmentName'; Indexed = $false; Sample = 'test' }
     @{ Token = '[#_service.deployclient.id_#]'; CanonicalParameter = 'deployClientId'; Indexed = $false; Sample = '00000000-0000-0000-0000-000000000000' }
+    @{ Token = '[#_service.adoEnvironment.name_#]'; CanonicalParameter = 'adoEnvironmentName'; Indexed = $false; Sample = 'GEN3-TEST' }
+    @{ Token = '[#_service.serviceConnection.name_#]'; CanonicalParameter = 'serviceConnectionName'; Indexed = $false; Sample = 'AZ_SP_sub_t-unittest_Owner' }
     @{ Token = '[#_service.managementgroup_#]'; CanonicalParameter = 'managementGroupName'; Indexed = $false; Sample = 'mg-test' }
     @{ Token = '[#_service.vnet.addressPrefix_#]'; CanonicalParameter = 'vnetAddressPrefix'; Indexed = $false; Sample = '10.0.0.0/25' }
     @{ Token = '[#_service.vnet.subnet.NN.addressPrefix_#]'; CanonicalParameter = 'subnetAddressPrefixes'; Indexed = $true; Sample = '10.0.0.0/27' }
