@@ -6,7 +6,9 @@ binding:
 configuration:
   AZURE_PARAMETER_FILE_EXPANSION: true
   AZURE_BICEP_FILE_EXPANSION: true
-  AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
+  # 60, not network's 30: this template expands three local modules plus AVM, and timed out at 30
+  # on 1 of 5 local runs.
+  AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 60
 execution:
   unprocessedObject: Ignore
 include:
