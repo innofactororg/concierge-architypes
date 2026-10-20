@@ -33,14 +33,14 @@ jobs:
       # concierge-app is a SEPARATE repository - the code that enforces the seeding contract
       # (Get-NewSpokeReservedToken, Test-NewSpokeReservedToken) lives there, not here
       # (docs/main/concierge-seeding-contract.md SS0: "with the code that enforces it (D-43),
-      # rather than in the vault or in the architypes repository"). Pinned to v3beta1 - the
-      # branch this phase's work lands on - rather than main, so this job tracks the same
-      # contract version the live engine actually runs.
+      # rather than in the vault or in the architypes repository"). Tracks main: the live engine
+      # is deployed from main. This was pinned to v3beta1 until 2026-10-20, by which time v3beta1
+      # was 40 commits behind main, lacked #3's pipeline tokens, and failed every architype PR.
       - name: Checkout concierge-app (vocabulary source of truth)
         uses: actions/checkout@v4
         with:
           repository: innofactororg/concierge-app
-          ref: v3beta1
+          ref: main
           path: concierge-app
 
       - name: Report pwsh version
