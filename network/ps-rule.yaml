@@ -5,7 +5,12 @@ binding:
     - resourceType
 configuration:
   AZURE_PARAMETER_FILE_EXPANSION: true
-  AZURE_BICEP_FILE_EXPANSION: true
+  # Expand through the bicepparam only. A standalone expansion of main.bicep or a module has no
+  # parameter values, so PSRule fails with "parameter ... not set" and the plan stage fails. The
+  # pipeline scans the whole repository, which the pathIgnore below did not stop (it does not
+  # match modules/x.bicep). Bicepparam expansion builds the template together with its values.
+  AZURE_BICEP_FILE_EXPANSION: false
+  AZURE_BICEP_PARAMS_FILE_EXPANSION: true
   AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
 execution:
   unprocessedObject: Ignore
