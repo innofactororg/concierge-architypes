@@ -15,13 +15,13 @@ name: $(BuildDefinitionName)_$(date:yyyyMMdd)$(rev:.r)
 # are the inline `variables:` block below; per-environment values are stage template
 # parameters (`serviceConnection`, `SUBSCRIPTION_ID`, `environmentName`, `IN_TEMPLATE_PARAMS`).
 #
-# `<from target config>` and `<resolved>` below are deliberate placeholders, not reserved
-# substitution tokens — this file holds both environments' stages at once (unlike
-# environments/{env}/main.bicepparam, which is one file per environment), so a single
-# whole-file token substitution pass cannot resolve two different per-stage values from one
-# token. Resolving these into real values at pipeline-registration time is Phase 2.1 engine
-# work (D-16, D-58), out of this plan's scope. The exact notation mirrors
-# 02-CONTEXT.md's own worked example of this pipeline stage shape.
+# One seeded pipeline per order: Concierge expands the reserved tokens below for the order's own
+# environment (its subscription id, ADO environment, service connection and environment folder),
+# so the file holds exactly that environment's Plan and Deploy stages. A `t` order is seeded with
+# the test stages and a `p` order with the production stages; nothing references an environment
+# the repository does not have. There is therefore no test -> production promotion gate inside the
+# file; adding a second environment to a workload is the append path (concierge-app D-02), which
+# will have to extend this file and reinstate the gate.
 #===============================================================================
 
 #===============================================================================
@@ -111,98 +111,53 @@ variables:
 stages:
 
   #=============================================================================
-  # PULL REQUEST — validate BOTH environments. No deploys.
+  # PULL REQUEST — validate this environment. No deploys.
   # Requires a Build Validation branch policy to run at all (D-54, out of this plan's scope —
   # see the `pr:` note above).
   #=============================================================================
   - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
     - template: .azuredevops/templates/plan-stage.yml@bicep_action
       parameters:
-        stageName: Plan_Test
-        displayName: 'Plan - Test'
-        environmentName: '<from target config>' # not hardcoded to the retired ADO Environment naming vocabulary (D-16)
-        serviceConnection: 'AZ_SP_sub_t-[#_service.name_#]_Owner'
+        stageName: Plan_[#_service.environmentName_#]
+        displayName: 'Plan - [#_service.environmentName_#]'
+        environmentName: '[#_service.adoEnvironment.name_#]'
+        serviceConnection: '[#_service.serviceConnection.name_#]'
         variables:
-          ARTIFACT_IDENTIFIER: test
-          SUBSCRIPTION_ID: '<resolved>'
-          ENVIRONMENT: '<from target config>'
-          IN_TEMPLATE_PARAMS: environments/test/main.bicepparam
-
-    - template: .azuredevops/templates/plan-stage.yml@bicep_action
-      parameters:
-        stageName: Plan_Production
-        displayName: 'Plan - Production'
-        environmentName: '<from target config>'
-        serviceConnection: 'AZ_SP_sub_p-[#_service.name_#]_Owner'
-        variables:
-          ARTIFACT_IDENTIFIER: production
-          SUBSCRIPTION_ID: '<resolved>'
-          ENVIRONMENT: '<from target config>'
-          IN_TEMPLATE_PARAMS: environments/production/main.bicepparam
+          ARTIFACT_IDENTIFIER: [#_service.environmentName_#]
+          SUBSCRIPTION_ID: '[#_service.subscription.id_#]'
+          ENVIRONMENT: '[#_service.adoEnvironment.name_#]'
+          IN_TEMPLATE_PARAMS: environments/[#_service.environmentName_#]/main.bicepparam
 
   #=============================================================================
-  # MAIN — progressive promotion: test must DEPLOY before prod may PLAN.
+  # MAIN — plan, then deploy behind the ADO Environment's approval.
   #=============================================================================
   - ${{ if and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main')) }}:
 
-    # 1. Plan test
     - template: .azuredevops/templates/plan-stage.yml@bicep_action
       parameters:
-        stageName: Plan_Test
-        displayName: 'Plan - Test'
-        environmentName: '<from target config>'
-        serviceConnection: 'AZ_SP_sub_t-[#_service.name_#]_Owner'
+        stageName: Plan_[#_service.environmentName_#]
+        displayName: 'Plan - [#_service.environmentName_#]'
+        environmentName: '[#_service.adoEnvironment.name_#]'
+        serviceConnection: '[#_service.serviceConnection.name_#]'
         variables:
-          ARTIFACT_IDENTIFIER: test
-          SUBSCRIPTION_ID: '<resolved>'
-          ENVIRONMENT: '<from target config>'
-          IN_TEMPLATE_PARAMS: environments/test/main.bicepparam
+          ARTIFACT_IDENTIFIER: [#_service.environmentName_#]
+          SUBSCRIPTION_ID: '[#_service.subscription.id_#]'
+          ENVIRONMENT: '[#_service.adoEnvironment.name_#]'
+          IN_TEMPLATE_PARAMS: environments/[#_service.environmentName_#]/main.bicepparam
 
-    # 2. Deploy test — gated by the ADO Environment's approval (requesterCannotBeApprover: true)
+    # Gated by the ADO Environment's approval (requesterCannotBeApprover: true)
     - template: .azuredevops/templates/deploy-stage.yml@bicep_action
       parameters:
-        stageName: Deploy_Test
-        displayName: 'Deploy - Test'
+        stageName: Deploy_[#_service.environmentName_#]
+        displayName: 'Deploy - [#_service.environmentName_#] (approval required)'
         dependsOn:
-          - Plan_Test
-        planStageName: Plan_Test
+          - Plan_[#_service.environmentName_#]
+        planStageName: Plan_[#_service.environmentName_#]
         planJobName: plan
-        environmentName: '<from target config>'
-        serviceConnection: 'AZ_SP_sub_t-[#_service.name_#]_Owner'
+        environmentName: '[#_service.adoEnvironment.name_#]'
+        serviceConnection: '[#_service.serviceConnection.name_#]'
         variables:
-          ARTIFACT_IDENTIFIER: test_deploy
-          SUBSCRIPTION_ID: '<resolved>'
-          ENVIRONMENT: '<from target config>'
-          IN_TEMPLATE_PARAMS: environments/test/main.bicepparam
-
-    # 3. Plan production — ONLY if test actually deployed. This is the promotion gate.
-    - template: .azuredevops/templates/plan-stage.yml@bicep_action
-      parameters:
-        stageName: Plan_Production
-        displayName: 'Plan - Production'
-        dependsOn:
-          - Deploy_Test
-        environmentName: '<from target config>'
-        serviceConnection: 'AZ_SP_sub_p-[#_service.name_#]_Owner'
-        variables:
-          ARTIFACT_IDENTIFIER: production
-          SUBSCRIPTION_ID: '<resolved>'
-          ENVIRONMENT: '<from target config>'
-          IN_TEMPLATE_PARAMS: environments/production/main.bicepparam
-
-    # 4. Deploy production — gated by the ADO Environment's approval (requesterCannotBeApprover: true)
-    - template: .azuredevops/templates/deploy-stage.yml@bicep_action
-      parameters:
-        stageName: Deploy_Production
-        displayName: 'Deploy - Production (approval required)'
-        dependsOn:
-          - Plan_Production
-        planStageName: Plan_Production
-        planJobName: plan
-        environmentName: '<from target config>'
-        serviceConnection: 'AZ_SP_sub_p-[#_service.name_#]_Owner'
-        variables:
-          ARTIFACT_IDENTIFIER: production_deploy
-          SUBSCRIPTION_ID: '<resolved>'
-          ENVIRONMENT: '<from target config>'
-          IN_TEMPLATE_PARAMS: environments/production/main.bicepparam
+          ARTIFACT_IDENTIFIER: [#_service.environmentName_#]_deploy
+          SUBSCRIPTION_ID: '[#_service.subscription.id_#]'
+          ENVIRONMENT: '[#_service.adoEnvironment.name_#]'
+          IN_TEMPLATE_PARAMS: environments/[#_service.environmentName_#]/main.bicepparam
