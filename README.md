@@ -47,6 +47,7 @@ current default.
 | Architype | Format | Notes |
 |---|---|---|
 | `network/` | Manifest (`schemaVersion` 1), Bicep | The **default** architype (`DefaultArchitype`): NOSP-27's consolidated multi-environment model — shared `main.bicep`, `environments/{env}/main.bicepparam` (folder-form), one `.pipelines/azure-pipeline.yaml`, `ps-rule.yaml`, `bicepconfig.json`. AVM from the Bicep public registry; no vendored `modules/` tree. |
+| `container/` | Manifest (`schemaVersion` 1), Bicep | Container Apps spoke, modelled on `ks5cae`: the `network` layer (same subnets, same order) plus a firewall route table and hub DNS servers, an internal zone-redundant workload-profiles Container Apps environment with a user-assigned workload identity, a private-endpoint-only Key Vault, and an optional PostgreSQL Flexible Server built to the NOSP-244 estate standard. The workload team builds the images, pushes them to the shared platform registry and registers the apps; this architype owns the platform layer only. Needs platform grants before it is complete, see [Platform grants for `container`](#platform-grants-for-container). |
 | `network-terraform/` | Manifest (`schemaVersion` 1), Terraform | Terraform network architype. Declares no pipeline — Terraform under the consolidated model is deferred work. |
 | `network-arm/` | Manifest (`schemaVersion` 1), ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) + single-file Bicep | Azure-Deploy-era network architype — legacy for Azure Repos targets, where `bicep-action` is now the deployment engine (D-14). Preserved, not promoted; see [`network-arm/README.md`](network-arm/README.md). |
 
@@ -67,6 +68,29 @@ this is a rename, not a code change — but anything that fetched the **old raw 
 (outside Concierge's own manifest-driven or single-file seeding logic) breaks the moment this
 lands on `main`. See `02-12-SUMMARY.md` in `concierge-app`'s `.planning/` for the pre-merge
 external-consumer check this rename required.
+
+## Platform grants for `container`
+
+The order's deploy identity (`dfa_NewSpoke05bDeployIdentity`) holds `Owner` on its own new
+subscription only, conditioned so that it cannot assign Owner, User Access Administrator or RBAC
+Administrator. Everything the `container` architype needs **outside that subscription** is therefore
+a platform grant, not something the seeded pipeline can do. Each one is an empty-by-default parameter,
+so the template deploys without it and the gap stays visible:
+
+| Need | Parameter | What the platform has to grant |
+|---|---|---|
+| Pull images from the shared registry | none: the template outputs `workloadIdentityPrincipalId` | `AcrPull` (ABAC repository-scoped where the registry uses it) for the workload identity on the shared registry, the same grant ks5cae's identity holds. Pushing from the workload team's CI is a separate identity and grant. |
+| Private endpoint A records in the central zones | `privateDnsZoneResourceIds` | `privateDnsZones/join/action` on the central `privatelink.*` zones for the deploy identity. Without it, the endpoints deploy with no DNS record and their names do not resolve. |
+| Container Apps names resolvable outside the environment | `dnsZoneLinkVirtualNetworkResourceIds` | `virtualNetworks/join/action` on the hub and DC VNets. The spoke resolves through the hub firewall DNS proxy to the DCs, so the **DC VNet** link is the one that answers. |
+| Diagnostics to the central workspace | `centralLogAnalyticsWorkspaceResourceId` | Permission to target the central workspace with a diagnostic setting. Without it, Container Apps and Key Vault have no central logs (`Azure.KeyVault.Logs` is excluded in `ps-rule.yaml` for this reason). |
+
+Peering, hub routes and firewall rules are the hub change, as for `network`. **Ordering matters
+more here than for `network`:** from its first deploy the spoke's DNS and 0.0.0.0/0 point at the
+hub firewall, and a Container Apps environment needs working DNS and egress to provision (Microsoft
+container registries, the shared platform registry, Entra ID). Merge the hub change, including the
+firewall rules for those destinations, **before** the seeded pipeline's first deploy. The hub IPAM
+record (`hub/ipam-spoke.yaml`) is the same as `network`'s and carries no signal that this is a
+Container Apps spoke, so the reviewer of the hub PR has to be told.
 
 ## What is deliberately not here
 
