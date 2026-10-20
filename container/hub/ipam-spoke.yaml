@@ -1,0 +1,11 @@
+# [#_service.environment_#]-[#_service.name_#] - IP allocations
+# Reserved by Concierge. Authoritative; firewall/locals_ips.tf is generated from this register.
+
+spoke: [#_service.environment_#]-[#_service.name_#]
+subscription: [#_service.subscription.id_#]
+vnet: [#_service.environment_#]-[#_service.name_#]-network-vnet
+vnet_prefix: [#_service.vnet.addressPrefix_#]
+
+subnets:
+  PeFrontendSubnet: [#_service.vnet.subnet.00.addressPrefix_#]
+  ScalableSubnet: [#_service.vnet.subnet.01.addressPrefix_#]

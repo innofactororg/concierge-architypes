@@ -1,0 +1,46 @@
+binding:
+  preferTargetInfo: true
+  targetType:
+    - type
+    - resourceType
+configuration:
+  AZURE_PARAMETER_FILE_EXPANSION: true
+  AZURE_BICEP_FILE_EXPANSION: true
+  AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
+execution:
+  unprocessedObject: Ignore
+include:
+  module:
+    - Az.Resources
+    - PSRule.Rules.Azure
+input:
+  pathIgnore:
+    - '**/bicepconfig.json'
+    - '**/modules/**/*.bicep'
+output:
+  culture:
+    - en-US
+  footer: RuleCount
+  format: Markdown
+  jobSummaryPath: psrule_summary.md
+  outcome: Processed
+  style: Detect
+rule:
+  exclude:
+    - Azure.Template.Resources
+    - Azure.Template.UseDescriptions
+    - Azure.Resource.UseTags
+    - Azure.NSG.LateralTraversal
+    - Azure.VNET.SingleDNS
+    - Azure.VNET.PrivateSubnet
+    - Azure.Deployment.SecureParameter
+    # Key Vault audit logs go to the central workspace through a diagnostic setting that is only
+    # deployed once centralLogAnalyticsWorkspaceResourceId is set, which needs a platform grant
+    # (README, "Platform grants"). Until then the vault has no audit log: a known gap, not a pass.
+    - Azure.KeyVault.Logs
+    # PostgreSQL follows the Elmera estate standard (NOSP-244), which differs from the baseline on
+    # purpose. Geo-redundant backup is production-only: modules/data.bicep enables it when
+    # environmentCode is 'p', and test stays LRS (NOSD-2462). HA is out of scope estate-wide (Rune,
+    # NOSD-2425 / NOSP-244).
+    - Azure.PostgreSQL.GeoRedundantBackup
+    - Azure.PostgreSQL.ZoneRedundantHA
