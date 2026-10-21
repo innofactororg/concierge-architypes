@@ -330,6 +330,34 @@ if (-not $isBicepArchitype) {
       $psRuleResult = @(Invoke-PSRule -InputPath $siblingParamFile -Option $psRuleOption -Module PSRule.Rules.Azure -Format File -ErrorAction Stop)
       $psRuleFailures = @($psRuleResult | Where-Object { $_.Outcome -eq 'Fail' })
       Write-CheckResult -Check 'ps-rule' -Ok ($psRuleResult.Count -gt 0 -and $psRuleFailures.Count -eq 0) -Detail "$($psRuleResult.Count) rule(s) evaluated, $($psRuleFailures.Count) failed$(if ($psRuleFailures.Count -gt 0) { ': ' + (($psRuleFailures | Select-Object -ExpandProperty RuleName) -join ', ') })"
+      # The plan stage does not scan the parameter file: it scans the whole seeded repository (ps-rule-assert,
+      # inputType repository). So scan a throwaway copy of the architype the way the pipeline does. This is
+      # what catches a ps-rule.yaml that expands main.bicep or a module standalone ("parameter ... not set"),
+      # which the parameter-file scan above cannot see.
+      $repoScanDir = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "psrule-repo-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+      try {
+        Copy-Item -Path $archPath -Destination $repoScanDir -Recurse
+        Get-ChildItem -Path $repoScanDir -Recurse -File | Where-Object { $_.Extension -in '.bicep', '.bicepparam', '.yaml', '.json' } | ForEach-Object {
+          $text = Get-Content -Path $_.FullName -Raw
+          foreach ($t in $script:ReservedTokens) {
+            if ($t.Indexed) { $text = ([regex]([regex]::Escape($t.Token) -replace 'NN', '\d{2}')).Replace($text, $t.Sample) } else { $text = $text.Replace($t.Token, $t.Sample) }
+          }
+          Set-Content -Path $_.FullName -Value $text -NoNewline
+        }
+        $scanOption = New-PSRuleOption -Path (Join-Path -Path $repoScanDir -ChildPath 'ps-rule.yaml') -OutputFormat None
+        $scanErrors = $null
+        # PSRule resolves the repository from the working directory, as the pipeline's checkout is
+        Push-Location -Path $repoScanDir
+        try {
+          $scanResult = @(Invoke-PSRule -InputPath $repoScanDir -Option $scanOption -Module PSRule.Rules.Azure -Format File -ErrorAction SilentlyContinue -ErrorVariable scanErrors)
+        } finally {
+          Pop-Location
+        }
+        $expandErrors = @($scanErrors | Where-Object { "$($_)" -match 'Failed to expand bicep source' })
+        Write-CheckResult -Check 'ps-rule-repository-scan' -Ok ($scanResult.Count -gt 0 -and $expandErrors.Count -eq 0) -Detail "repository scan: $($scanResult.Count) rule(s) evaluated, $($expandErrors.Count) bicep expansion error(s)$(if ($expandErrors.Count -gt 0) { ": $(("$($expandErrors[0])" -split "`n")[0])" })"
+      } finally {
+        Remove-Item -Path $repoScanDir -Recurse -Force -ErrorAction SilentlyContinue
+      }
     } catch {
       Write-CheckResult -Check 'ps-rule' -Ok $false -Detail "PSRule run failed: $($_.Exception.Message)"
     }
