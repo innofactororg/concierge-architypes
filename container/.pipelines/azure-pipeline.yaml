@@ -104,6 +104,11 @@ variables:
   # settings are applied. The what-if may list resources as "unsupported" or "detach" where a
   # resource name is only known at deploy time; under detachAll that is expected and harmless, and
   # a delete mode must not be enabled while it is true (bicep-action refuses it anyway).
+  # createdOn is minted once per resource and kept (bicep-action "Existing tags"): the pipeline reads
+  # the tag of what already exists and provides it to the parameter file as EXISTING_TAGS. Without
+  # this variable EXISTING_TAGS is not set and the template does not compile, by design.
+  - name: EXISTING_TAGS_KEYS
+    value: createdOn
   - name: DEPLOYMENT_MODE
     value: stack
   - name: STACK_ACTION_ON_UNMANAGE
