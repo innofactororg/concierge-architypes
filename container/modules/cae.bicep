@@ -15,6 +15,8 @@
 //     VNet, so it needs a platform grant (README, "Platform grants").
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import { tagsFor } from 'tags.bicep'
+
 @description('Spoke name, {environmentCode}-{workloadName}.')
 param spokeName string
 
@@ -36,26 +38,32 @@ param logAnalyticsWorkspaceResourceId string
 @description('Also create the PostgreSQL Entra administrator identity. It lives here, one module above data.bicep, because the administrator resource is named by the principal id, which must be known when data.bicep starts.')
 param createPostgreSqlAdminIdentity bool
 
-@description('Resource tags.')
-param tags object
+@description('Tags every resource carries except createdOn.')
+param baseTags object
+
+@description('createdOn values of resources that already exist, keyed by lower-cased resource id (modules/tags.bicep).')
+param existingTags object
+
+@description('Deployment time, used as createdOn for a resource that does not exist yet.')
+param now string
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${spokeName}-cae-01-uami'
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', '${spokeName}-cae-01-uami'))
 }
 
 // Separate from the workload identity so the apps never run as database administrator.
 resource postgreSqlAdminIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (createPostgreSqlAdminIdentity) {
   name: '${spokeName}-psql-01-admin-uami'
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', '${spokeName}-psql-01-admin-uami'))
 }
 
 resource environment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
   name: '${spokeName}-cae-01'
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.App/managedEnvironments', '${spokeName}-cae-01'))
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -120,7 +128,9 @@ module dns 'cae-dns.bicep' = {
     spokeName: spokeName
     virtualNetworkResourceId: virtualNetworkResourceId
     remoteVirtualNetworkResourceIds: remoteVirtualNetworkResourceIds
-    tags: tags
+    baseTags: baseTags
+    existingTags: existingTags
+    now: now
   }
 }
 

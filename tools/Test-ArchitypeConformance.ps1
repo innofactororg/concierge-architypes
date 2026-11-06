@@ -275,6 +275,10 @@ if (-not $isBicepArchitype) {
   # ---------------------------------------------------------------------------------------------
   # Check 5: Bicep build (shared template) + build-params (config file, tokens substituted)
   # ---------------------------------------------------------------------------------------------
+  # The parameter files read EXISTING_TAGS (the createdOn values of what already exists) without a
+  # default, because the pipeline provides it before the build. An empty object stands in for it
+  # here: a first deployment, where nothing exists yet.
+  $env:EXISTING_TAGS = '{}'
   $bicepEntry = $entries | Where-Object { $_.Source.ToLowerInvariant().EndsWith('.bicep') -and -not $_.IsConfig } | Select-Object -First 1
   $siblingParamFile = $null
   if ($null -eq $bicepEntry) {

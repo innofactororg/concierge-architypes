@@ -60,6 +60,11 @@ param architypeVersion string
 @description('The Azure region where the resources will be deployed.')
 param location string = 'westeurope'
 
+@description('createdOn of the resources that already exist, keyed by lower-cased resource id. The parameter file reads it from the EXISTING_TAGS environment variable the pipeline provides before the build, with no default, so a missing value fails the build and never re-stamps.')
+param existingTags object
+
+@description('Deployment time: the createdOn of a resource that does not exist yet. utcNow() is only valid as a parameter default; it must never be used as the tag value of a resource that already exists.')
+param now string = utcNow()
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Variables
@@ -68,10 +73,20 @@ param location string = 'westeurope'
 var spokeName = '${environmentCode}-${workloadName}'
 var networkRgName = '${spokeName}-network'
 
+// `createdOn` is owned by the infrastructure code, per resource: minted once, when the resource is
+// first created, and carried unchanged afterwards. `utcNow()` alone would record the LAST
+// deployment, and the [GOV] Append policy evaluates the request, so it stamps the deployment time
+// too. The pipeline reads the `createdOn` of what already exists before the build and provides it
+// as EXISTING_TAGS (an object keyed by lower-cased resource id); a resource that is not in it
+// yet takes `now`. Kept in this file because this architype seeds a single template; the
+// `container` architype shares the same function from modules/tags.bicep.
+func tagsFor(baseTags object, existing object, deployedAt string, resourceId string) object =>
+  union(baseTags, { createdOn: existing[?toLower(resourceId)].?createdOn ?? deployedAt })
+
 // Tags follow the estate standard: PascalCase keys, no duplicates (tag names are case-insensitive).
 // Application and Environment replace the lowercase `workload` and `environment` this template
-// used to carry. The provenance tags stay (D-45). createdOn, Owner, OwnerEmail, CostCenter and
-// ServiceTier follow separately (createdOn needs a pipeline step; the others need order inputs).
+// used to carry. The provenance tags stay (D-45). Owner, OwnerEmail, CostCenter and ServiceTier
+// need order inputs Concierge does not supply yet.
 var environmentLabel = environmentCode == 'p' ? 'Production' : (environmentCode == 't' ? 'Test' : 'Development')
 
 var tags = {
@@ -121,7 +136,7 @@ resource partnerAttribution 'Microsoft.Resources/deployments@2022-09-01' = {
 resource networkRg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: networkRgName
   location: location
-  tags: tags
+  tags: tagsFor(tags, existingTags, now, subscriptionResourceId('Microsoft.Resources/resourceGroups', networkRgName))
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -199,7 +214,7 @@ module peFrontendSubnetNsg 'br/public:avm/res/network/network-security-group:0.1
     name: '${networkRgName}-vnet-PeFrontendSubnet-nsg'
     location: location
     securityRules: peFrontendSubnetSecurityRules
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/networkSecurityGroups', '${networkRgName}-vnet-PeFrontendSubnet-nsg'))
   }
 }
 
@@ -211,7 +226,7 @@ module scalableSubnetNsg 'br/public:avm/res/network/network-security-group:0.1.3
     name: '${networkRgName}-vnet-ScalableSubnet-nsg'
     location: location
     securityRules: scalableSubnetSecurityRules
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/networkSecurityGroups', '${networkRgName}-vnet-ScalableSubnet-nsg'))
   }
 }
 
@@ -228,7 +243,7 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
     location: location
     addressPrefixes: [vnetAddressPrefix]
     dnsServers: []
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/virtualNetworks', '${networkRgName}-vnet'))
     subnets: [
       {
         name: 'PeFrontendSubnet'

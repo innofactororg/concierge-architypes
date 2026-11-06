@@ -26,6 +26,11 @@ param architypeVersion = '[#_provenance.architypeVersion_#]'
 
 param location = 'westeurope'
 
+// createdOn of what already exists in the subscription, provided by the pipeline before the build
+// (an object keyed by lower-cased resource id). No default on purpose: when the variable is not
+// set the build fails, rather than every resource being given a new createdOn (modules/tags.bicep).
+param existingTags = json(readEnvironmentVariable('EXISTING_TAGS'))
+
 // Elmera hub: the p-we1net firewall is both the DNS proxy (spoke VNets resolve through it to the
 // DCs, which are linked to every central private DNS zone) and the 0.0.0.0/0 next hop.
 param dnsServers = [
