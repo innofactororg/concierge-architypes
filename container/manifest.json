@@ -18,6 +18,10 @@
       "target": "modules/cae-dns.bicep"
     },
     {
+      "source": "modules/tags.bicep",
+      "target": "modules/tags.bicep"
+    },
+    {
       "source": "modules/data.bicep",
       "target": "modules/data.bicep"
     },

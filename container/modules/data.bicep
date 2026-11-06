@@ -17,6 +17,8 @@
 //     the admin grants the workload identity its own database roles.
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import { tagsFor } from 'tags.bicep'
+
 @description('Spoke name, {environmentCode}-{workloadName}.')
 param spokeName string
 
@@ -48,8 +50,14 @@ param postgreSqlAdminName string
 @description('Deploy the PostgreSQL Flexible Server.')
 param deployPostgreSql bool
 
-@description('Resource tags.')
-param tags object
+@description('Tags every resource carries except createdOn.')
+param baseTags object
+
+@description('createdOn values of resources that already exist, keyed by lower-cased resource id (modules/tags.bicep).')
+param existingTags object
+
+@description('Deployment time, used as createdOn for a resource that does not exist yet.')
+param now string
 
 var isProduction = environmentCode == 'p'
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
@@ -61,7 +69,7 @@ var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: '${spokeName}-kv-01'
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.KeyVault/vaults', '${spokeName}-kv-01'))
   properties: {
     tenantId: tenant().tenantId
     sku: {
@@ -113,7 +121,7 @@ resource keyVaultDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-p
 resource keyVaultEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
   name: '${keyVault.name}-pe'
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.Network/privateEndpoints', '${spokeName}-kv-01-pe'))
   properties: {
     subnet: {
       id: privateEndpointSubnetResourceId
@@ -154,7 +162,7 @@ resource keyVaultDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZone
 resource postgreSql 'Microsoft.DBforPostgreSQL/flexibleServers@2025-06-01-preview' = if (deployPostgreSql) {
   name: '${spokeName}-psql-01'
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.DBforPostgreSQL/flexibleServers', '${spokeName}-psql-01'))
   sku: {
     name: isProduction ? 'Standard_D2ds_v5' : 'Standard_B1ms'
     tier: isProduction ? 'GeneralPurpose' : 'Burstable'
@@ -226,7 +234,7 @@ resource postgreSqlEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if
   // can fail with ServerIsBusy.
   dependsOn: [postgreSqlAdmin]
   location: location
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.Network/privateEndpoints', '${spokeName}-psql-01-pe'))
   properties: {
     subnet: {
       id: privateEndpointSubnetResourceId

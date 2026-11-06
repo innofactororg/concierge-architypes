@@ -18,6 +18,8 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 targetScope = 'subscription'
 
+import { tagsFor } from 'modules/tags.bicep'
+
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Parameters — canonical (seeding contract)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -88,6 +90,11 @@ param dnsZoneLinkVirtualNetworkResourceIds array = []
 @description('Deploy a PostgreSQL Flexible Server to the estate standard (NOSP-244).')
 param deployPostgreSql bool = false
 
+@description('createdOn of the resources that already exist, keyed by lower-cased resource id. The parameter file reads it from the EXISTING_TAGS environment variable the pipeline provides before the build, with no default, so a missing value fails the build and never re-stamps (modules/tags.bicep).')
+param existingTags object
+
+@description('Deployment time: the createdOn of a resource that does not exist yet. utcNow() is only valid as a parameter default; it must never be used as the tag value of a resource that already exists.')
+param now string = utcNow()
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Variables
@@ -101,8 +108,9 @@ var dataRgName = '${spokeName}-data'
 // Tags follow the estate standard: PascalCase keys, no duplicates (tag names are case-insensitive,
 // so a lowercase variant of an existing key is the same key). Application and Environment replace
 // the lowercase `workload` and `environment` this template used to carry. The provenance tags
-// (orderId, requestedBy, architypeVersion) stay (D-45). createdOn, Owner, OwnerEmail, CostCenter
-// and ServiceTier follow separately (createdOn needs a pipeline step; the others need order inputs).
+// (orderId, requestedBy, architypeVersion) stay (D-45). createdOn is added per resource by
+// `tagsFor` (modules/tags.bicep). Owner, OwnerEmail, CostCenter and ServiceTier need order inputs
+// Concierge does not supply yet.
 var environmentLabel = environmentCode == 'p' ? 'Production' : (environmentCode == 't' ? 'Test' : 'Development')
 
 var tags = {
@@ -152,19 +160,19 @@ resource partnerAttribution 'Microsoft.Resources/deployments@2022-09-01' = {
 resource networkRg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: networkRgName
   location: location
-  tags: tags
+  tags: tagsFor(tags, existingTags, now, subscriptionResourceId('Microsoft.Resources/resourceGroups', networkRgName))
 }
 
 resource caeRg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: caeRgName
   location: location
-  tags: tags
+  tags: tagsFor(tags, existingTags, now, subscriptionResourceId('Microsoft.Resources/resourceGroups', caeRgName))
 }
 
 resource dataRg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: dataRgName
   location: location
-  tags: tags
+  tags: tagsFor(tags, existingTags, now, subscriptionResourceId('Microsoft.Resources/resourceGroups', dataRgName))
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -210,7 +218,7 @@ module peFrontendSubnetNsg 'br/public:avm/res/network/network-security-group:0.1
     name: '${networkRgName}-vnet-PeFrontendSubnet-nsg'
     location: location
     securityRules: baselineSecurityRules
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/networkSecurityGroups', '${networkRgName}-vnet-PeFrontendSubnet-nsg'))
   }
 }
 
@@ -222,7 +230,7 @@ module scalableSubnetNsg 'br/public:avm/res/network/network-security-group:0.1.3
     name: '${networkRgName}-vnet-ScalableSubnet-nsg'
     location: location
     securityRules: baselineSecurityRules
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/networkSecurityGroups', '${networkRgName}-vnet-ScalableSubnet-nsg'))
   }
 }
 
@@ -248,7 +256,7 @@ module routeTable 'br/public:avm/res/network/route-table:0.2.2' = {
         }
       }
     ]
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/routeTables', '${networkRgName}-vnet-rt'))
   }
 }
 
@@ -265,7 +273,7 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
     location: location
     addressPrefixes: [vnetAddressPrefix]
     dnsServers: dnsServers
-    tags: tags
+    tags: tagsFor(tags, existingTags, now, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/virtualNetworks', '${networkRgName}-vnet'))
     subnets: [
       {
         name: 'PeFrontendSubnet'
@@ -314,7 +322,9 @@ module cae 'modules/cae.bicep' = {
     remoteVirtualNetworkResourceIds: dnsZoneLinkVirtualNetworkResourceIds
     createPostgreSqlAdminIdentity: deployPostgreSql
     logAnalyticsWorkspaceResourceId: centralLogAnalyticsWorkspaceResourceId
-    tags: tags
+    baseTags: tags
+    existingTags: existingTags
+    now: now
   }
 }
 
@@ -337,7 +347,9 @@ module data 'modules/data.bicep' = {
     postgreSqlAdminPrincipalId: cae.outputs.postgreSqlAdminPrincipalId
     postgreSqlAdminName: cae.outputs.postgreSqlAdminName
     deployPostgreSql: deployPostgreSql
-    tags: tags
+    baseTags: tags
+    existingTags: existingTags
+    now: now
   }
 }
 

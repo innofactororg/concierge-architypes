@@ -35,3 +35,8 @@ param architypeVersion = '[#_provenance.architypeVersion_#]'
 // convention of one parameter per line, and so a future non-westeurope region is a one-line
 // change to this file rather than a main.bicep edit.
 param location = 'westeurope'
+
+// createdOn of what already exists in the subscription, provided by the pipeline before the build
+// (an object keyed by lower-cased resource id). No default on purpose: when the variable is not
+// set the build fails, rather than every resource being given a new createdOn.
+param existingTags = json(readEnvironmentVariable('EXISTING_TAGS'))

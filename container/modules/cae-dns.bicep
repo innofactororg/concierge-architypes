@@ -6,6 +6,8 @@
 // (see cae.bicep for why the DC VNet link is the one that answers).
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import { tagsFor } from 'tags.bicep'
+
 @description('Default domain of the Container Apps environment.')
 param defaultDomain string
 
@@ -21,14 +23,20 @@ param virtualNetworkResourceId string
 @description('Further VNets to link the zone to. Cross-subscription.')
 param remoteVirtualNetworkResourceIds array
 
-@description('Resource tags.')
-param tags object
+@description('Tags every resource carries except createdOn.')
+param baseTags object
+
+@description('createdOn values of resources that already exist, keyed by lower-cased resource id (modules/tags.bicep).')
+param existingTags object
+
+@description('Deployment time, used as createdOn for a resource that does not exist yet.')
+param now string
 
 // An internal environment's apps resolve at *.{defaultDomain} to the environment's static IP.
 resource defaultDomainZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: defaultDomain
   location: 'global'
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.Network/privateDnsZones', defaultDomain))
 }
 
 resource wildcardRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' = {
@@ -61,7 +69,7 @@ resource spokeLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-0
   parent: defaultDomainZone
   name: '${spokeName}-network-vnet-link'
   location: 'global'
-  tags: tags
+  tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', defaultDomain, '${spokeName}-network-vnet-link'))
   properties: {
     registrationEnabled: false
     virtualNetwork: {
@@ -75,7 +83,7 @@ resource remoteLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024
     parent: defaultDomainZone
     name: '${last(split(vnetId, '/'))}-link'
     location: 'global'
-    tags: tags
+    tags: tagsFor(baseTags, existingTags, now, resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', defaultDomain, '${last(split(vnetId, '/'))}-link'))
     properties: {
       registrationEnabled: false
       virtualNetwork: {
