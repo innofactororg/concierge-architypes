@@ -88,6 +88,7 @@ param dnsZoneLinkVirtualNetworkResourceIds array = []
 @description('Deploy a PostgreSQL Flexible Server to the estate standard (NOSP-244).')
 param deployPostgreSql bool = false
 
+
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Variables
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -97,14 +98,51 @@ var networkRgName = '${spokeName}-network'
 var caeRgName = '${spokeName}-cae'
 var dataRgName = '${spokeName}-data'
 
-// Provenance reaches deployed resources through this tags object (D-45). `createdOn` is owned by
-// the [GOV] Append policy and deliberately not minted here.
+// Tags follow the estate standard: PascalCase keys, no duplicates (tag names are case-insensitive,
+// so a lowercase variant of an existing key is the same key). Application and Environment replace
+// the lowercase `workload` and `environment` this template used to carry. The provenance tags
+// (orderId, requestedBy, architypeVersion) stay (D-45). createdOn, Owner, OwnerEmail, CostCenter
+// and ServiceTier follow separately (createdOn needs a pipeline step; the others need order inputs).
+var environmentLabel = environmentCode == 'p' ? 'Production' : (environmentCode == 't' ? 'Test' : 'Development')
+
 var tags = {
+  Application: workloadName
+  Environment: environmentLabel
   orderId: orderId
-  workload: workloadName
-  environment: environmentCode
   requestedBy: requestedBy
   architypeVersion: architypeVersion
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Partner attribution
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Mandatory in every template Innofactor writes: an empty nested deployment with the fixed
+// partner id, deployed on every run, so Microsoft attributes the consumption. No parameter and no
+// condition. It is separate from AVM's own `enableTelemetry`.
+//
+// A deployment name at subscription scope is bound to the location of its first deployment: the
+// same name deployed later from a different location fails. It is therefore kept on this
+// template's own deployment location, the `location` parameter (westeurope only, @allowed), the
+// same location the pipeline's IN_LOCATION uses for the deployment record. Changing either one
+// of them later would make this deployment fail.
+#disable-next-line no-deployments-resources // inline by design: the fixed partner id must not depend on a module or registry
+resource partnerAttribution 'Microsoft.Resources/deployments@2022-09-01' = {
+  name: 'pid-d40f4895-5a21-5612-aa15-69cd25571694'
+  location: location
+  properties: {
+    mode: 'Incremental'
+    template: {
+      '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#'
+      contentVersion: '1.0.0.0'
+      resources: []
+      outputs: {
+        telemetry: {
+          type: 'String'
+          value: 'For more information, see https://aka.ms/partnerattribution'
+        }
+      }
+    }
+  }
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -241,6 +279,12 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
         addressPrefix: subnetAddressPrefixes[1]
         networkSecurityGroupResourceId: scalableSubnetNsg.outputs.resourceId
         routeTableResourceId: routeTable.outputs.resourceId
+        // Explicit, not left to the module default: the module sends null, Azure keeps the
+        // subnet's live value, and what-if compares against the API default (Enabled), so every
+        // plan reported a change that never happens. `Disabled` is the live value and costs
+        // nothing here: this subnet holds no private endpoints, only the delegated Container
+        // Apps environment. See docs/governance-r1.md, section 3, for the Microsoft documentation.
+        privateEndpointNetworkPolicies: 'Disabled'
         delegations: [
           {
             name: 'Microsoft.App.environments'

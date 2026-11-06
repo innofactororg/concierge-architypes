@@ -92,12 +92,24 @@ variables:
     value: sub
   - name: IN_SEVERITY
     value: INFO
+  # Cost estimate: ACE 1.6.5 parses current Bicep output (languageVersion 2.0). -1 reports only and
+  # never fails the plan. If the estimator fails on a template, keep the error; do not blank the
+  # version to hide it.
   - name: COST_THRESHOLD
     value: -1
-  # ACE cannot parse ARM JSON with languageVersion 2.0 (emitted by current Bicep) — empty
-  # skips the cost-estimate step. Matches ks5cae and salgsl.IaC.
   - name: VERSION_ACE
-    value: ''
+    value: '1.6.5'
+  # Deployment stacks by default (bicep-action). The stack is named after the repository, nothing is
+  # ever deleted (a resource removed from the template is detached, not deleted) and no deny
+  # settings are applied. The what-if may list resources as "unsupported" or "detach" where a
+  # resource name is only known at deploy time; under detachAll that is expected and harmless, and
+  # a delete mode must not be enabled while it is true (bicep-action refuses it anyway).
+  - name: DEPLOYMENT_MODE
+    value: stack
+  - name: STACK_ACTION_ON_UNMANAGE
+    value: detachAll
+  - name: STACK_DENY_SETTINGS_MODE
+    value: none
   - name: PSRULE_AZURE_RESOURCE_MODULE_NOWARN
     value: true
   - name: WAIT_COUNT
