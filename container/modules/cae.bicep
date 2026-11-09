@@ -69,6 +69,9 @@ resource environment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
     }
     // Workload profiles, not consumption-only: a consumption-only environment needs a /23 and
     // does not fit a /25 spoke.
+    // Private-only made explicit: the environment is internal (no public inbound address), and
+    // this blocks all public traffic to it rather than leaving the property to its default.
+    publicNetworkAccess: 'Disabled'
     workloadProfiles: [
       {
         name: 'Consumption'
