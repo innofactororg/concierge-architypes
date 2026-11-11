@@ -109,6 +109,10 @@ variables:
   # this variable EXISTING_TAGS is not set and the template does not compile, by design.
   - name: EXISTING_TAGS_KEYS
     value: createdOn
+  # Currency of the cost estimate. bicep-action passes it to the estimator as `--currency` and an empty
+  # value makes the estimator fail on the next flag, so it is always set here.
+  - name: IN_CURRENCY
+    value: EUR
   - name: DEPLOYMENT_MODE
     value: stack
   - name: STACK_ACTION_ON_UNMANAGE
