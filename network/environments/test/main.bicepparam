@@ -38,5 +38,18 @@ param location = 'westeurope'
 
 // createdOn of what already exists in the subscription, provided by the pipeline before the build
 // (an object keyed by lower-cased resource id). No default on purpose: when the variable is not
-// set the build fails, rather than every resource being given a new createdOn.
-param existingTags = json(readEnvironmentVariable('EXISTING_TAGS'))
+// set the build fails, rather than every resource being given a new createdOn (modules/tags.bicep).
+//
+// Only the entries under this spoke's own resource groups are kept. The snapshot check writes every
+// parameter value into the snapshot, so the platform's resource groups (network watcher, the
+// Container Apps managed group, monitoring) must not be part of this value: a change to any of
+// them would otherwise fail the snapshot check of a template that did not change.
+var existingTagsAll = json(readEnvironmentVariable('EXISTING_TAGS'))
+var ownedResourceGroups = [
+  toLower('/subscriptions/${subscriptionId}/resourceGroups/${environmentCode}-${workloadName}-network')
+]
+param existingTags = toObject(
+  filter(items(existingTagsAll), e => length(filter(ownedResourceGroups, rg => e.key == rg || startsWith(e.key, '${rg}/'))) > 0),
+  e => e.key,
+  e => e.value
+)

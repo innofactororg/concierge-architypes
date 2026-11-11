@@ -95,6 +95,13 @@ resource environment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
       }
     }
     zoneRedundant: true
+    // The zones Azure assigns to a zone-redundant environment in this region (all three), stated so the
+    // plan does not report them as a removal on every run.
+    availabilityZones: [
+      '1'
+      '2'
+      '3'
+    ]
   }
 }
 
