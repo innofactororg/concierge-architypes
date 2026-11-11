@@ -40,7 +40,8 @@ The tag values arrive through the order-tag tokens in `environments/{env}/main.b
 | `deployAzureSql` (+ `sqlAdminGroupObjectId`, `sqlAdminGroupName`) | One Azure SQL server and database, Entra-only, administered by the named group, private endpoint. |
 | `deployPostgreSql` | The PostgreSQL Flexible Server described above. |
 | `deployDelivery` (+ the `github*` parameters) | A registry for the environment and a GitHub OIDC identity that pushes to it and deploys apps. |
-| `enableHubPeering` (+ the `hub*` parameters) | Peering with the hub VNet in both directions and the spoke route in the hub gateway route table. Both directions are written by this deployment, so the deploy identity needs write access on the hub network resource group. Who should write the hub side is an open decision; keep it off until it is made. |
+| `enableHubPeering` (+ the `hubNetwork*` and `hubVnetName` parameters) | The spoke-to-hub peering, in the spoke's own subscription; the deploy identity needs no right on the hub. The hub creates its own side (the hub-to-spoke peering and the gateway-subnet route) from the hub register that the hub change adds this spoke to, and the peering reports Connected on both sides once it has. |
+| `enableHubSideWrites` | Transition only, default off. Also writes the hub side and the hub route from this deployment, which needs write on the hub network resource group and makes this a second writer of objects the hub's own code owns. Do not use it where the hub creates its side from the register. |
 | `clientNetworkAddressPrefixes` | An NSG allow (443 and 31443) for client networks that reach the spoke through the hub firewall. |
 
 ## Platform grants

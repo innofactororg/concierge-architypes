@@ -70,9 +70,13 @@ param dnsServers = [
 ]
 param firewallPrivateIp = '10.0.0.4'
 
-// Hub connectivity (default off, see the main.bicep note): the spoke side and the hub side of the
-// peering, and the spoke route in the hub gateway route table, are written only when this is true.
+// Hub connectivity (default off, see the main.bicep note). The hub owns the hub side: the hub's own
+// infrastructure code creates the hub-to-spoke peering and the gateway-subnet route from the register
+// this spoke is added to, so this deployment writes only the spoke-to-hub peering, in its own
+// subscription, and the deploy identity needs no right on the hub. enableHubSideWrites is a
+// transition switch that also writes the hub side from here; leave it off.
 param enableHubPeering = false
+param enableHubSideWrites = false
 param hubNetworkSubscriptionId = ''
 param hubNetworkResourceGroupName = ''
 param hubVnetName = ''

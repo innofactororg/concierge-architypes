@@ -138,11 +138,23 @@ param spokeLocationLabel string = ''
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Parameters — hub connectivity (default off)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Who writes the hub side of a spoke's peering and route is not decided (LLD-96). Until it is, the
-// spoke deploys without any hub write: enableHubPeering is false and the values below stay empty.
+// The hub owns the hub side of a spoke's peering and route (LLD-96, option A): the hub's own
+// infrastructure code creates the hub-to-spoke peering and the gateway-subnet route from the hub
+// register that the hub change registers this spoke in. This template therefore writes only its own
+// side, in its own subscription, and the deploy identity needs no right on the hub.
+//
+// enableHubPeering writes the spoke-to-hub peering (spoke subscription only). The peering reports
+// Connected on both sides once the hub side exists.
+// enableHubSideWrites is a transition switch, default off: it also writes the hub-to-spoke peering
+// and the hub route from here, which needs write on the hub network resource group and makes this
+// deployment a second writer of objects the hub's infrastructure code owns. Do not use it where the
+// hub creates its side from the register.
 
-@description('Peer the spoke VNet with the hub and add the spoke route to the hub gateway route table. Both directions are written by this deployment, so the deploy identity needs write access on the hub network resource group. Default off.')
+@description('Create the spoke-to-hub peering in this spoke\'s own subscription. Needs the hub VNet values below, and no right on the hub. Default off; the tenant sets it when it supplies the hub values.')
 param enableHubPeering bool = false
+
+@description('TRANSITION ONLY, default off. Also write the hub-to-spoke peering and the spoke route in the hub gateway route table from this deployment. Needs write access on the hub network resource group and makes this a second writer next to the hub\'s own infrastructure code, which creates both from the hub register.')
+param enableHubSideWrites bool = false
 
 @description('Subscription that holds the hub network. Required when enableHubPeering is true.')
 param hubNetworkSubscriptionId string = ''
@@ -153,7 +165,7 @@ param hubNetworkResourceGroupName string = ''
 @description('Name of the hub VNet. Required when enableHubPeering is true.')
 param hubVnetName string = ''
 
-@description('Name of the hub gateway-subnet route table that carries a route per spoke. Required when enableHubPeering is true.')
+@description('Name of the hub gateway-subnet route table that carries a route per spoke. Required only when enableHubSideWrites is true.')
 param hubGatewayRouteTableName string = ''
 
 @description('Client networks (VPN and office) the hub firewall passes to the spoke. Their source address is not in the VirtualNetwork tag, so the Container Apps subnet NSG needs an explicit allow for them. Empty: no such rule.')
@@ -421,15 +433,16 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
     addressPrefixes: [vnetAddressPrefix]
     dnsServers: dnsServers
     tags: withCreatedOn(tags, existingTags, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/virtualNetworks', '${networkRgName}-vnet'), now)
-    // Peering to the hub, both directions (the hub side needs a platform grant), only when
-    // enableHubPeering. The VPN gateway is in the hub: this spoke uses it (useRemoteGateways), the
+    // Peering from the spoke to the hub, in this subscription, only when enableHubPeering. The hub side
+    // is written here only when enableHubSideWrites (transition); otherwise the hub's own code creates
+    // it from the register. The VPN gateway is in the hub: this spoke uses it (useRemoteGateways), the
     // hub offers it (gateway transit).
     peerings: enableHubPeering ? [
       {
         name: hubVnetName
         remoteVirtualNetworkId: hubVnetResourceId
         remotePeeringName: '${networkRgName}-vnet'
-        remotePeeringEnabled: true
+        remotePeeringEnabled: enableHubSideWrites
         allowVirtualNetworkAccess: true
         allowForwardedTraffic: true
         allowGatewayTransit: false
@@ -477,10 +490,10 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//                                  Hub route for the spoke range (only with enableHubPeering)
+//                                  Hub route for the spoke range (only with enableHubSideWrites, transition)
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-module hubRoute 'modules/hub-route.bicep' = if (enableHubPeering) {
+module hubRoute 'modules/hub-route.bicep' = if (enableHubPeering && enableHubSideWrites) {
   name: '${spokeName}-hubRouteDeploy'
   scope: resourceGroup(hubNetworkSubscriptionId, hubNetworkResourceGroupName)
   params: {
