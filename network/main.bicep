@@ -1,7 +1,7 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  main.bicep — network
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Consolidated multi-environment model (NOSP-27 ADR-0001 / repo-local ADR-0003).
+// Consolidated multi-environment model.
 // Shared across every environment: this file does not change per environment —
 // only `environments/{env}/main.bicepparam` does.
 //
@@ -53,7 +53,7 @@ param architypeVersion string
 //                                  Parameters — architype-local
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Not part of the reserved-token vocabulary. A literal default is fine — every current
-// Elmera IaC target region is westeurope (ks5cae's `location` param carries the same
+// target region is westeurope (the reference spokes' `location` param carries the same
 // @allowed(['westeurope']) constraint).
 
 @allowed(['westeurope'])
@@ -142,7 +142,7 @@ resource networkRg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Network security groups
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Every rule is explicit source/destination/port. `vdcroot` carries 25 policy assignments
+// Every rule is explicit source/destination/port. the root management group carries many policy assignments
 // including `Deny-AnyAny-NSGRules` — an any-any rule (source AND destination address prefix
 // both `*` together with destination port `*`) makes this template undeployable by policy at
 // the subscription this seeds into, and is the first thing 02-14's conformance test checks

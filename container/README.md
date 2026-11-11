@@ -27,6 +27,23 @@ Outputs include `workloadIdentityResourceId` and `workloadIdentityPrincipalId` (
 apps run as and the principal that needs registry pull rights), `containerAppsEnvironmentResourceId`
 and `keyVaultUri`.
 
+## Order-supplied estate tags
+
+Every resource group and resource carries `Application`, `Environment` (derived), `Owner`, `OwnerEmail`, `CostCenter`, `ServiceTier`, the provenance tags (`orderId`, `requestedBy`, `architypeVersion`) and a `createdOn` that is minted once per resource. The subscription itself carries the same set plus `ProductTeam`, `SubscriptionRole`, `Purpose` and `Description`, and whatever a tenant adds in `additionalSubscriptionTags`. The subscription tags are written as one `Microsoft.Resources/tags` PUT, which replaces the whole set: a tag added by hand is removed on the next deploy, so list every tag you want kept.
+
+The tag values arrive through the order-tag tokens in `environments/{env}/main.bicepparam` (`applicationName`, `ownerName`, `ownerEmail`, `costCenter`, `serviceTier`, `productTeam`, `spokeDescription`). None has a default.
+
+## Optional parts (all default off)
+
+| Parameter | What it adds |
+|---|---|
+| `deployAzureSql` (+ `sqlAdminGroupObjectId`, `sqlAdminGroupName`) | One Azure SQL server and database, Entra-only, administered by the named group, private endpoint. |
+| `deployPostgreSql` | The PostgreSQL Flexible Server described above. |
+| `deployDelivery` (+ the `github*` parameters) | A registry for the environment and a GitHub OIDC identity that pushes to it and deploys apps. |
+| `enableHubPeering` (+ the `hubNetwork*` and `hubVnetName` parameters) | The spoke-to-hub peering, in the spoke's own subscription; the deploy identity needs no right on the hub. The hub creates its own side (the hub-to-spoke peering and the gateway-subnet route) from the hub register that the hub change adds this spoke to, and the peering reports Connected on both sides once it has. |
+| `enableHubSideWrites` | Transition only, default off. Also writes the hub side and the hub route from this deployment, which needs write on the hub network resource group and makes this a second writer of objects the hub's own code owns. Do not use it where the hub creates its side from the register. |
+| `clientNetworkAddressPrefixes` | An NSG allow (443 and 31443) for client networks that reach the spoke through the hub firewall. |
+
 ## Platform grants
 
 Everything this architype needs outside its own subscription is a platform grant. The table lives

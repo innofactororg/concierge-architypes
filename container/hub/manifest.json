@@ -3,9 +3,9 @@
   "hubType": "vnet",
   "repository": {
     "provider": "AzureRepos",
-    "organization": "fjordkraft",
-    "project": "Elmera IaC",
-    "name": "p-we1net",
+    "organization": "example-org",
+    "project": "example-project",
+    "name": "hub-network",
     "targetBranch": "main"
   },
   "branchNameTemplate": "concierge/spoke-[#_service.environment_#]-[#_service.name_#]",

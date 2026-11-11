@@ -3,9 +3,7 @@ name: $(BuildDefinitionName)_$(date:yyyyMMdd)$(rev:.r)
 #===============================================================================
 # network — Consolidated Multi-Environment Deployment Pipeline
 #===============================================================================
-# Model: NOSP-27 ADR-0001 (project-level), repo-local ADR-0003 in ks5cae:
-#        docs/adr/0003-consolidated-multi-environment-model.md.
-#        Reference implementations: ks5cae, salgsl.IaC.
+# Model: one consolidated multi-environment pipeline per workload.
 #
 #   Pull request  ->  Plan_Test + Plan_Production          (what-if only, NO deploy)
 #   Merge to main ->  Plan_Test -> Deploy_Test -> Plan_Production -> Deploy_Production
@@ -64,7 +62,7 @@ resources:
       type: github
       name: InnofactorOrg/bicep-action
       ref: refs/heads/main
-      # Innofactor-Bicep-Action already exists as a GitHub service connection in Elmera IaC;
+      # Innofactor-Bicep-Action already exists as a GitHub service connection in the Azure DevOps project;
       # Concierge creates nothing for it (D-15). The endpoint name itself is fixed — the same
       # connection serves every workload in this ADO project — so it is a literal here rather
       # than a per-workload substitution token.

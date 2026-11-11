@@ -1,16 +1,25 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  modules/data.bicep — container
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Key Vault (always) and PostgreSQL Flexible Server (optional), in the spoke's `-data` resource
-// group. Both are private-endpoint only, in PeFrontendSubnet.
+// Key Vault (always), plus Azure SQL and/or PostgreSQL Flexible Server (each optional), in the
+// spoke's `-data` resource group. All are private-endpoint only, in PeFrontendSubnet.
 //
-// PostgreSQL follows the estate standard Kamran's NOSP-244 rebuilds are converging on:
+// Azure SQL is the estate default for a workload database (PostgreSQL only when a workload needs it):
+//   - one logical server and one database per environment.
+//   - Entra authentication only, the administrator is an Entra group: no SQL password to seed,
+//     store or rotate. The workload identity is not the administrator; the administrators grant it
+//     its own database roles after deployment (a contained user, not IaC).
+//   - public network access Disabled, minimum TLS 1.2, reached through a private endpoint.
+//   - test: General Purpose serverless (auto-pause), locally redundant backup.
+//   - production: General Purpose provisioned, geo-redundant backup (create-time-only).
+//
+// PostgreSQL follows the estate standard:
 //   - private endpoint model: created in public-access mode with public access Disabled, plus a
 //     private endpoint. Never VNet-integrated: networking mode is create-time-only, and a
-//     VNet-integrated server can never take a private endpoint (NOSD-2371).
+//     VNet-integrated server can never take a private endpoint .
 //   - PostgreSQL 18.
-//   - geo-redundant backup in production only (create-time-only; test stays LRS, NOSD-2462).
-//   - no HA (out of scope estate-wide, Rune).
+//   - geo-redundant backup in production only (create-time-only; test stays LRS).
+//   - no HA (out of scope estate-wide).
 //   - GeneralPurpose in production: Burstable cannot take geo-redundant backup.
 //   - Entra authentication only: no password to seed, store or rotate. The administrator is a
 //     dedicated identity, not the workload identity, so the apps do not run as database admin;
@@ -32,7 +41,7 @@ param environmentCode string
 @description('Subnet the private endpoints are placed in.')
 param privateEndpointSubnetResourceId string
 
-@description('Central private DNS zones by service (keyVault, postgreSql). Empty: no DNS zone group.')
+@description('Central private DNS zones by service (keyVault, postgreSql, sql). Empty: no DNS zone group.')
 param privateDnsZoneResourceIds object
 
 @description('Central Log Analytics workspace. Empty skips the diagnostic settings.')
@@ -49,6 +58,15 @@ param postgreSqlAdminName string
 
 @description('Deploy the PostgreSQL Flexible Server.')
 param deployPostgreSql bool
+
+@description('Deploy the Azure SQL server and database.')
+param deployAzureSql bool
+
+@description('Object id of the Entra group that administers the SQL server. Required when deployAzureSql is true.')
+param sqlAdminGroupObjectId string
+
+@description('Display name of the Entra group that administers the SQL server. Required when deployAzureSql is true.')
+param sqlAdminGroupName string
 
 @description('Tags every resource carries except createdOn.')
 param baseTags object
@@ -180,7 +198,7 @@ resource postgreSql 'Microsoft.DBforPostgreSQL/flexibleServers@2025-06-01-previe
     highAvailability: {
       mode: 'Disabled'
     }
-    // A custom window rather than the platform's random one (NOSP-239). Sunday 02:00 UTC.
+    // A custom window rather than the platform's random one. Sunday 02:00 UTC.
     maintenanceWindow: {
       customWindow: 'Enabled'
       dayOfWeek: 0
@@ -266,5 +284,117 @@ resource postgreSqlDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZo
   }
 }
 
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Azure SQL (optional)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Backup storage redundancy is create-time-only: changing it later is a rebuild (copy or restore),
+// not a pipeline run.
+
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01' = if (deployAzureSql) {
+  name: '${spokeName}-sql-01'
+  location: location
+  tags: withCreatedOn(baseTags, existingTags, resourceId('Microsoft.Sql/servers', '${spokeName}-sql-01'), now)
+  properties: {
+    version: '12.0'
+    minimalTlsVersion: '1.2'
+    publicNetworkAccess: 'Disabled'
+    administrators: {
+      administratorType: 'ActiveDirectory'
+      principalType: 'Group'
+      login: sqlAdminGroupName
+      sid: sqlAdminGroupObjectId
+      tenantId: tenant().tenantId
+      azureADOnlyAuthentication: true
+    }
+  }
+}
+
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01' = if (deployAzureSql) {
+  parent: sqlServer
+  name: '${spokeName}-sqldb-01'
+  location: location
+  tags: withCreatedOn(baseTags, existingTags, resourceId('Microsoft.Sql/servers/databases', '${spokeName}-sql-01', '${spokeName}-sqldb-01'), now)
+  sku: isProduction ? {
+    name: 'GP_Gen5_2'
+    tier: 'GeneralPurpose'
+    family: 'Gen5'
+    capacity: 2
+  } : {
+    name: 'GP_S_Gen5_1'
+    tier: 'GeneralPurpose'
+    family: 'Gen5'
+    capacity: 1
+  }
+  properties: {
+    collation: 'SQL_Latin1_General_CP1_CI_AS'
+    maxSizeBytes: 34359738368 // 32 GB
+    zoneRedundant: false
+    // Customer-controlled window (Azure.SQL.MaintenanceWindow): the platform's overnight weekday
+    // window rather than a random one. Same intent as the PostgreSQL custom window .
+    maintenanceConfigurationId: subscriptionResourceId('Microsoft.Maintenance/publicMaintenanceConfigurations', 'SQL_WestEurope_DB_1')
+    requestedBackupStorageRedundancy: isProduction ? 'Geo' : 'Local' // create-time-only
+    autoPauseDelay: isProduction ? null : 60 // serverless (test) only
+    minCapacity: isProduction ? null : json('0.5') // serverless (test) only
+  }
+}
+
+// Defender for SQL on the server, matching the subscription plan (Azure.SQL.DefenderCloud).
+resource sqlSecurityAlertPolicy 'Microsoft.Sql/servers/securityAlertPolicies@2023-08-01' = if (deployAzureSql) {
+  parent: sqlServer
+  name: 'Default'
+  properties: {
+    state: 'Enabled'
+    emailAccountAdmins: false
+  }
+}
+
+// Vulnerability assessment, express configuration (no storage account). Defender for SQL turns it
+// on for new servers anyway; declaring it keeps IaC and Defender in step (Azure.SQL.VAScan).
+resource sqlVulnerabilityAssessment 'Microsoft.Sql/servers/sqlVulnerabilityAssessments@2023-08-01' = if (deployAzureSql) {
+  parent: sqlServer
+  name: 'default'
+  dependsOn: [sqlSecurityAlertPolicy]
+  properties: {
+    state: 'Enabled'
+  }
+}
+
+resource sqlEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (deployAzureSql) {
+  name: '${spokeName}-sql-01-pe'
+  location: location
+  tags: withCreatedOn(baseTags, existingTags, resourceId('Microsoft.Network/privateEndpoints', '${spokeName}-sql-01-pe'), now)
+  properties: {
+    subnet: {
+      id: privateEndpointSubnetResourceId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: '${spokeName}-sql-01-pe'
+        properties: {
+          privateLinkServiceId: sqlServer.id
+          groupIds: ['sqlServer']
+        }
+      }
+    ]
+  }
+}
+
+resource sqlDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (deployAzureSql && !empty((privateDnsZoneResourceIds.?sql ?? ''))) {
+  parent: sqlEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'privatelink-database-windows-net'
+        properties: {
+          privateDnsZoneId: (privateDnsZoneResourceIds.?sql ?? '')
+        }
+      }
+    ]
+  }
+}
+
 output keyVaultUri string = keyVault.properties.vaultUri
 output postgreSqlFqdn string = deployPostgreSql ? postgreSql!.properties.fullyQualifiedDomainName : ''
+output sqlServerFqdn string = deployAzureSql ? sqlServer!.properties.fullyQualifiedDomainName : ''
+output sqlDatabaseName string = deployAzureSql ? sqlDatabase!.name : ''

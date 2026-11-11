@@ -17,7 +17,7 @@
     @{ Token = '[#_service.environment_#]'; CanonicalParameter = 'environmentCode'; Indexed = $false; Sample = 't' }
     @{ Token = '[#_service.environmentName_#]'; CanonicalParameter = 'environmentName'; Indexed = $false; Sample = 'test' }
     @{ Token = '[#_service.deployclient.id_#]'; CanonicalParameter = 'deployClientId'; Indexed = $false; Sample = '00000000-0000-0000-0000-000000000000' }
-    @{ Token = '[#_service.adoEnvironment.name_#]'; CanonicalParameter = 'adoEnvironmentName'; Indexed = $false; Sample = 'GEN3-TEST' }
+    @{ Token = '[#_service.adoEnvironment.name_#]'; CanonicalParameter = 'adoEnvironmentName'; Indexed = $false; Sample = 'ENV-TEST' }
     @{ Token = '[#_service.serviceConnection.name_#]'; CanonicalParameter = 'serviceConnectionName'; Indexed = $false; Sample = 'AZ_SP_sub_t-unittest_Owner' }
     @{ Token = '[#_service.managementgroup_#]'; CanonicalParameter = 'managementGroupName'; Indexed = $false; Sample = 'mg-test' }
     @{ Token = '[#_service.vnet.addressPrefix_#]'; CanonicalParameter = 'vnetAddressPrefix'; Indexed = $false; Sample = '10.0.0.0/25' }
@@ -29,5 +29,12 @@
     @{ Token = '[#_provenance.environment_#]'; CanonicalParameter = 'environmentCode'; Indexed = $false; Sample = 't' }
     @{ Token = '[#_provenance.requestedBy_#]'; CanonicalParameter = 'requestedBy'; Indexed = $false; Sample = 'test@example.com' }
     @{ Token = '[#_provenance.architypeVersion_#]'; CanonicalParameter = 'architypeVersion'; Indexed = $false; Sample = '1.0.0' }
+    @{ Token = '[#_tag.application_#]'; CanonicalParameter = 'applicationName'; Indexed = $false; Sample = 'unittest-app' }
+    @{ Token = '[#_tag.owner.name_#]'; CanonicalParameter = 'ownerName'; Indexed = $false; Sample = 'Test Owner' }
+    @{ Token = '[#_tag.owner.email_#]'; CanonicalParameter = 'ownerEmail'; Indexed = $false; Sample = 'owner@example.com' }
+    @{ Token = '[#_tag.costcenter_#]'; CanonicalParameter = 'costCenter'; Indexed = $false; Sample = 'IT-Test' }
+    @{ Token = '[#_tag.servicetier_#]'; CanonicalParameter = 'serviceTier'; Indexed = $false; Sample = 'Silver' }
+    @{ Token = '[#_tag.productteam_#]'; CanonicalParameter = 'productTeam'; Indexed = $false; Sample = 'Test Team' }
+    @{ Token = '[#_tag.description_#]'; CanonicalParameter = 'spokeDescription'; Indexed = $false; Sample = 'Unit test spoke' }
   )
 }

@@ -26,6 +26,14 @@
       "target": "modules/data.bicep"
     },
     {
+      "source": "modules/hub-route.bicep",
+      "target": "modules/hub-route.bicep"
+    },
+    {
+      "source": "modules/delivery.bicep",
+      "target": "modules/delivery.bicep"
+    },
+    {
       "source": "ps-rule.yaml",
       "target": "ps-rule.yaml"
     },
