@@ -2,16 +2,16 @@
 //                                  modules/cae.bicep — container
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // The Container Apps environment and the identity its apps run as, in the spoke's `-cae`
-// resource group. Shape follows ks5cae: internal, workload profiles, peer traffic encrypted, a
-// user-assigned identity for registry pull. Differences from ks5cae, both deliberate:
+// resource group. Internal, workload profiles, peer traffic encrypted, a
+// user-assigned identity for registry pull. Two deliberate choices:
 //   - Logs go to Azure Monitor through a diagnostic setting, not `log-analytics` with a shared
 //     key. `listKeys()` on the central workspace would need a key-read grant in p-mgt for every
 //     order's deploy identity; a diagnostic setting needs less, and nothing when left empty.
 //   - The default-domain zone is always linked to the spoke VNet, and to the VNets in
 //     `remoteVirtualNetworkResourceIds` only when given. Those remote links are what make the
 //     apps resolvable from anywhere else: the spoke's DNS servers are the firewall proxy, which
-//     forwards to the DCs, so it is the DC VNet's link (p-we1dc-network-vnet) that answers, not
-//     the spoke's. ks5cae links the hub and DC VNets; each is a join on another subscription's
+//     forwards to the domain controllers, so it is their VNet's link that answers, not
+//     the spoke's. The reference spokes link the hub and domain-controller VNets; each is a join on another subscription's
 //     VNet, so it needs a platform grant (README, "Platform grants").
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -29,7 +29,7 @@ param infrastructureSubnetResourceId string
 @description('Spoke VNet, for the default-domain private DNS zone link.')
 param virtualNetworkResourceId string
 
-@description('Further VNets to link the default-domain zone to (in Elmera: the hub and DC VNets). Cross-subscription; empty links the spoke only.')
+@description('Further VNets to link the default-domain zone to (typically the hub and domain-controller VNets). Cross-subscription; empty links the spoke only.')
 param remoteVirtualNetworkResourceIds array
 
 @description('Central Log Analytics workspace. Empty skips the diagnostic setting.')

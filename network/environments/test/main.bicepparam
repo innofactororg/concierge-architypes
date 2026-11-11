@@ -1,9 +1,6 @@
 // Reference per-environment parameter file for the `network` architype.
 //
-// Folder-form (`environments/{env}/main.bicepparam`) is this architype's layout — it diverges
-// from the NOSP-27 reference implementations' file-form (`environments/test.bicepparam`,
-// `environments/production.bicepparam`). See the "NOSP-27 refinement note" in
-// `02-11-SUMMARY.md` for the proposed refinement and who it is raised with (D-12).
+// Folder-form (`environments/{env}/main.bicepparam`) is this architype's layout.
 //
 // Every value below is either a literal or a reserved substitution token from
 // concierge-app's docs/main/concierge-seeding-contract.md (schemaVersion 1). No token outside
@@ -30,7 +27,7 @@ param orderId = '[#_provenance.orderId_#]'
 param requestedBy = '[#_provenance.requestedBy_#]'
 param architypeVersion = '[#_provenance.architypeVersion_#]'
 
-// Not a reserved token — every current Elmera IaC target region is westeurope. Assigned
+// Not a reserved token — every current target region is westeurope. Assigned
 // explicitly (rather than left to the default) to match the reference implementations'
 // convention of one parameter per line, and so a future non-westeurope region is a one-line
 // change to this file rather than a main.bicep edit.

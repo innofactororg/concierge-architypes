@@ -28,7 +28,7 @@
 
   Checks 4-6 are skipped - not failed - for a non-Bicep architype (network-terraform has no
   Bicep to build; network-arm is legacy content preserved rather than promoted). bicepconfig.json
-  presence is never gated (RESEARCH.md Open Question 1, resolved) - neither ks5cae nor salgsl.IaC
+  presence is never gated (RESEARCH.md Open Question 1, resolved) - neither reference workload
   has one.
 .PARAMETER Path
   The architype folder to validate (e.g. ../concierge-architypes/network).

@@ -1,7 +1,7 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  main.bicep — container
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Container Apps spoke, modelled on ks5cae (the Bergen reference implementation): an internal,
+// Container Apps spoke, modelled on an established reference spoke: an internal,
 // workload-profiles Container Apps environment in a firewalled spoke, a user-assigned identity
 // for registry pull and Key Vault, and a private-endpoint-only Key Vault. The workload team
 // builds the containers, pushes them to the shared platform registry and registers the apps on
@@ -12,7 +12,7 @@
 // shape without renaming (and so recreating) a subnet. Added here: the firewall route table and
 // the hub DNS servers on the VNet.
 //
-// Consolidated multi-environment model (NOSP-27 ADR-0001 / repo-local ADR-0003): this file does
+// Consolidated multi-environment model: this file does
 // not change per environment, only `environments/{env}/main.bicepparam` does. Parameter names in
 // the canonical block are fixed by the seeding contract (schemaVersion 1).
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,7 +69,7 @@ param architypeVersion string
 @description('The Azure region where the resources will be deployed.')
 param location string = 'westeurope'
 
-@description('DNS servers for the spoke VNet. In Elmera this is the hub firewall DNS proxy, which forwards to the DCs; the DC VNet is linked to every central private DNS zone, so the spoke needs no zone links of its own.')
+@description('DNS servers for the spoke VNet. Typically the hub firewall DNS proxy, which forwards to the domain controllers; their VNet is linked to every central private DNS zone, so the spoke needs no zone links of its own.')
 param dnsServers array
 
 @description('Private IP of the hub firewall: next hop for 0.0.0.0/0 on every spoke subnet.')
@@ -78,17 +78,108 @@ param firewallPrivateIp string
 @description('Central Log Analytics workspace for Container Apps and Key Vault diagnostics. Cross-subscription: needs a platform grant (README). Empty skips diagnostics.')
 param centralLogAnalyticsWorkspaceResourceId string = ''
 
-@description('Central private DNS zones by service (keyVault, postgreSql). A private endpoint registers its A record in the zone named here. Cross-subscription: needs a platform grant (README). An empty value deploys the endpoint without a DNS zone group.')
+@description('Central private DNS zones by service (keyVault, postgreSql, sql). A private endpoint registers its A record in the zone named here. Cross-subscription: needs a platform grant (README). An empty value deploys the endpoint without a DNS zone group.')
 param privateDnsZoneResourceIds object = {
   keyVault: ''
   postgreSql: ''
+  sql: ''
 }
 
-@description('VNets the Container Apps default-domain zone is linked to besides the spoke (in Elmera: the hub and DC VNets, so the apps resolve through the DCs). Cross-subscription: needs a platform grant (README). Empty links the spoke only, which on its own resolves nothing: the spoke\'s DNS is the firewall proxy, which forwards to the DCs.')
+@description('VNets the Container Apps default-domain zone is linked to besides the spoke (typically the hub and domain-controller VNets, so the apps resolve through them). Cross-subscription: needs a platform grant (README). Empty links the spoke only, which on its own resolves nothing: the spoke\'s DNS is the firewall proxy, which forwards to the DCs.')
 param dnsZoneLinkVirtualNetworkResourceIds array = []
 
-@description('Deploy a PostgreSQL Flexible Server to the estate standard (NOSP-244).')
+@description('Deploy a PostgreSQL Flexible Server (private endpoint model, Entra only).')
 param deployPostgreSql bool = false
+
+@description('Deploy an Azure SQL server and database (the estate default for a workload database).')
+param deployAzureSql bool = false
+
+@description('Object id of the Entra group that administers the SQL server (Entra-only authentication). Required when deployAzureSql is true.')
+param sqlAdminGroupObjectId string = ''
+
+@description('Display name of the Entra group that administers the SQL server. Required when deployAzureSql is true.')
+param sqlAdminGroupName string = ''
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Parameters — order-supplied estate tags
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Asked on the order form once per application (concierge-app order-tag contract) and carried
+// into the parameter file by the tag tokens. None has a default: a wrong cost centre is
+// worse than a failed order.
+
+@description('Application name, the `Application` tag (cost reporting and ownership).')
+param applicationName string
+
+@description('Name of the person accountable for the application, the `Owner` tag.')
+param ownerName string
+
+@description('Email of the owner, the `OwnerEmail` tag.')
+param ownerEmail string
+
+@description('Cost centre the spoke is billed to, the `CostCenter` tag.')
+param costCenter string
+
+@description('Service tier of the application, the `ServiceTier` tag.')
+@allowed(['Silver', 'Gold', 'Platinum'])
+param serviceTier string
+
+@description('Product team that owns and manages the spoke, the subscription `ProductTeam` tag: the name of its Entra group without the tenant\'s group prefix.')
+param productTeam string
+
+@description('Free-text description of what the spoke hosts, the subscription `Description` tag.')
+param spokeDescription string
+
+@description('Extra subscription tags a tenant adds to the standard set (the whole set is written as one PUT, so every tag the subscription should keep is listed here or above). A tenant\'s own parameter file computes these from the parameters above.')
+param additionalSubscriptionTags object = {}
+
+@description('Where the spoke lives, for the subscription `Purpose` tag ("This subscription is a \'t\' spoke in the <label>"). Empty leaves the sentence without a place.')
+param spokeLocationLabel string = ''
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Parameters — hub connectivity (default off)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Who writes the hub side of a spoke's peering and route is not decided (LLD-96). Until it is, the
+// spoke deploys without any hub write: enableHubPeering is false and the values below stay empty.
+
+@description('Peer the spoke VNet with the hub and add the spoke route to the hub gateway route table. Both directions are written by this deployment, so the deploy identity needs write access on the hub network resource group. Default off.')
+param enableHubPeering bool = false
+
+@description('Subscription that holds the hub network. Required when enableHubPeering is true.')
+param hubNetworkSubscriptionId string = ''
+
+@description('Resource group of the hub network. Required when enableHubPeering is true.')
+param hubNetworkResourceGroupName string = ''
+
+@description('Name of the hub VNet. Required when enableHubPeering is true.')
+param hubVnetName string = ''
+
+@description('Name of the hub gateway-subnet route table that carries a route per spoke. Required when enableHubPeering is true.')
+param hubGatewayRouteTableName string = ''
+
+@description('Client networks (VPN and office) the hub firewall passes to the spoke. Their source address is not in the VirtualNetwork tag, so the Container Apps subnet NSG needs an explicit allow for them. Empty: no such rule.')
+param clientNetworkAddressPrefixes array = []
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Parameters — delivery (default off)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+@description('Deploy a container registry for the environment and a GitHub OIDC identity that pushes to it and deploys apps. Default off; the values below are required only when it is on.')
+param deployDelivery bool = false
+
+@description('GitHub organisation that owns the workload repository.')
+param githubOrg string = ''
+
+@description('Numeric id of the GitHub organisation. GitHub puts it in the OIDC subject.')
+param githubOrgId string = ''
+
+@description('Name of the GitHub repository whose workflows deploy to this environment.')
+param githubRepo string = ''
+
+@description('Numeric id of the GitHub repository. GitHub puts it in the OIDC subject.')
+param githubRepoId string = ''
+
+@description('Which workflows may log in: the part of the OIDC subject after the repository, e.g. ref:refs/heads/main, pull_request or environment:production.')
+param githubSubjectSuffix string = 'ref:refs/heads/main'
 
 @description('createdOn of the resources that already exist, keyed by lower-cased resource id. The parameter file reads it from the EXISTING_TAGS environment variable the pipeline provides before the build, with no default, so a missing value fails the build and never re-stamps (modules/tags.bicep).')
 param existingTags object
@@ -106,19 +197,50 @@ var caeRgName = '${spokeName}-cae'
 var dataRgName = '${spokeName}-data'
 
 // Tags follow the estate standard: PascalCase keys, no duplicates (tag names are case-insensitive,
-// so a lowercase variant of an existing key is the same key). Application and Environment replace
-// the lowercase `workload` and `environment` this template used to carry. The provenance tags
-// (orderId, requestedBy, architypeVersion) stay (D-45). createdOn is added per resource by
-// `withCreatedOn` (modules/tags.bicep). Owner, OwnerEmail, CostCenter and ServiceTier need order inputs
-// Concierge does not supply yet.
+// so a lowercase variant of an existing key is the same key). Environment is derived, not collected.
+// The provenance tags (orderId, requestedBy, architypeVersion) stay (D-45). createdOn is added per
+// resource by `withCreatedOn` (modules/tags.bicep).
 var environmentLabel = environmentCode == 'p' ? 'Production' : (environmentCode == 't' ? 'Test' : 'Development')
 
 var tags = {
-  Application: workloadName
+  Application: applicationName
   Environment: environmentLabel
+  Owner: ownerName
+  OwnerEmail: ownerEmail
+  CostCenter: costCenter
+  ServiceTier: serviceTier
   orderId: orderId
   requestedBy: requestedBy
   architypeVersion: architypeVersion
+}
+
+// Subscription tags: the level cost reporting reads. The resource tags above (without createdOn, which
+// is a property of a resource) plus ProductTeam, SubscriptionRole, Purpose and Description, plus
+// whatever a tenant adds in additionalSubscriptionTags.
+// Tags/default is a PUT: ARM replaces the subscription's whole tag set, so list every tag the
+// subscription should carry. A tag added by hand on the subscription is removed on the next deploy.
+var subscriptionTags = union(tags, {
+  ProductTeam: productTeam
+  SubscriptionRole: 'Spoke'
+  Purpose: 'This subscription is a \'${environmentCode}\' spoke${empty(spokeLocationLabel) ? '' : ' in the ${spokeLocationLabel}'}.'
+  Description: spokeDescription
+}, additionalSubscriptionTags)
+
+var hubVnetResourceId = enableHubPeering ? resourceId(hubNetworkSubscriptionId, hubNetworkResourceGroupName, 'Microsoft.Network/virtualNetworks', hubVnetName) : ''
+
+// GitHub's OIDC subject carries the organisation and repository ids, so a renamed or recreated
+// repository does not match (a name-only subject fails with AADSTS700213).
+var githubSubject = 'repo:${githubOrg}@${githubOrgId}/${githubRepo}@${githubRepoId}:${githubSubjectSuffix}'
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Subscription tags
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+resource subscriptionTagSet 'Microsoft.Resources/tags@2021-04-01' = {
+  name: 'default'
+  properties: {
+    tags: subscriptionTags
+  }
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -178,14 +300,14 @@ resource dataRg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Network security groups
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// No any-any rule: `vdcroot` assigns `Deny-AnyAny-NSGRules`, which would make the template
+// No any-any rule: the estate's root management group assigns a policy that denies any-any NSG rules, which would make the template
 // undeployable at the subscription this seeds into (D-56).
 
 var baselineSecurityRules = [
   {
     name: 'DenyInternetInbound'
     properties: {
-      priority: 100
+      priority: 110
       direction: 'Inbound'
       access: 'Deny'
       protocol: '*'
@@ -210,6 +332,31 @@ var baselineSecurityRules = [
   }
 ]
 
+// Client networks arrive through the hub firewall with their own source address, which is not in the
+// VirtualNetwork tag, so without this rule the NSG drops them at the internal load balancer of the
+// Container Apps environment. Private endpoints ignore the NSG, so the PeFrontendSubnet needs nothing.
+// 31443 as well as 443: in a workload-profiles Container Apps environment the internal load balancer
+// forwards 443 to node port 31443 (envoy-https), and the NSG sees the port after the load balancer,
+// so 443 alone is dropped.
+// Priority 100 on purpose: the client networks are outside the VirtualNetwork tag, so
+// DenyInternetInbound matches them and must come after this allow (it is 110).
+var scalableSubnetSecurityRules = empty(clientNetworkAddressPrefixes) ? baselineSecurityRules : concat(baselineSecurityRules, [
+  {
+    name: 'AllowHttpsFromClientNetworks'
+    properties: {
+      priority: 100
+      direction: 'Inbound'
+      access: 'Allow'
+      protocol: 'Tcp'
+      sourcePortRange: '*'
+      destinationPortRanges: ['443', '31443']
+      sourceAddressPrefixes: clientNetworkAddressPrefixes
+      destinationAddressPrefix: 'VirtualNetwork'
+      description: 'HTTPS from the client networks (VPN, office) to the Container Apps environment'
+    }
+  }
+])
+
 module peFrontendSubnetNsg 'br/public:avm/res/network/network-security-group:0.1.3' = {
   name: 'peFrontendSubnetNsgDeploy'
   scope: resourceGroup(networkRgName)
@@ -229,7 +376,7 @@ module scalableSubnetNsg 'br/public:avm/res/network/network-security-group:0.1.3
   params: {
     name: '${networkRgName}-vnet-ScalableSubnet-nsg'
     location: location
-    securityRules: baselineSecurityRules
+    securityRules: scalableSubnetSecurityRules
     tags: withCreatedOn(tags, existingTags, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/networkSecurityGroups', '${networkRgName}-vnet-ScalableSubnet-nsg'), now)
   }
 }
@@ -274,6 +421,29 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
     addressPrefixes: [vnetAddressPrefix]
     dnsServers: dnsServers
     tags: withCreatedOn(tags, existingTags, resourceId(subscription().subscriptionId, networkRgName, 'Microsoft.Network/virtualNetworks', '${networkRgName}-vnet'), now)
+    // Peering to the hub, both directions (the hub side needs a platform grant), only when
+    // enableHubPeering. The VPN gateway is in the hub: this spoke uses it (useRemoteGateways), the
+    // hub offers it (gateway transit).
+    peerings: enableHubPeering ? [
+      {
+        name: hubVnetName
+        remoteVirtualNetworkId: hubVnetResourceId
+        remotePeeringName: '${networkRgName}-vnet'
+        remotePeeringEnabled: true
+        allowVirtualNetworkAccess: true
+        allowForwardedTraffic: true
+        allowGatewayTransit: false
+        useRemoteGateways: true
+        remotePeeringAllowVirtualNetworkAccess: true
+        remotePeeringAllowForwardedTraffic: false
+        remotePeeringAllowGatewayTransit: true
+        remotePeeringUseRemoteGateways: false
+        // AVM defaults these to true, but Azure only persists false. Pinned so what-if converges
+        // instead of showing a change on the hub peering every run.
+        doNotVerifyRemoteGateways: false
+        remotePeeringDoNotVerifyRemoteGateways: false
+      }
+    ] : []
     subnets: [
       {
         name: 'PeFrontendSubnet'
@@ -307,6 +477,21 @@ module virtualNetwork 'br/public:avm/res/network/virtual-network:0.1.5' = {
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Hub route for the spoke range (only with enableHubPeering)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+module hubRoute 'modules/hub-route.bicep' = if (enableHubPeering) {
+  name: '${spokeName}-hubRouteDeploy'
+  scope: resourceGroup(hubNetworkSubscriptionId, hubNetworkResourceGroupName)
+  params: {
+    routeTableName: hubGatewayRouteTableName
+    routeName: virtualNetwork.outputs.name
+    addressPrefix: vnetAddressPrefix
+    nextHopIpAddress: firewallPrivateIp
+  }
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                  Container Apps environment + identity
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -329,7 +514,31 @@ module cae 'modules/cae.bicep' = {
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//                                  Key Vault + optional PostgreSQL
+//                                  Registry + GitHub identity (only with deployDelivery)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+module delivery 'modules/delivery.bicep' = if (deployDelivery) {
+  name: 'deliveryDeploy'
+  scope: resourceGroup(caeRgName)
+  dependsOn: [caeRg]
+  params: {
+    spokeName: spokeName
+    environmentCode: environmentCode
+    workloadName: workloadName
+    location: location
+    runtimeIdentityName: '${spokeName}-cae-01-uami'
+    runtimeIdentityPrincipalId: cae.outputs.identityPrincipalId
+    githubCredentialName: 'github-${githubOrg}-${githubRepo}'
+    githubSubject: githubSubject
+    logAnalyticsWorkspaceResourceId: centralLogAnalyticsWorkspaceResourceId
+    baseTags: tags
+    existingTags: existingTags
+    now: now
+  }
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                                  Key Vault + optional Azure SQL / PostgreSQL
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 module data 'modules/data.bicep' = {
@@ -347,6 +556,9 @@ module data 'modules/data.bicep' = {
     postgreSqlAdminPrincipalId: cae.outputs.postgreSqlAdminPrincipalId
     postgreSqlAdminName: cae.outputs.postgreSqlAdminName
     deployPostgreSql: deployPostgreSql
+    deployAzureSql: deployAzureSql
+    sqlAdminGroupObjectId: sqlAdminGroupObjectId
+    sqlAdminGroupName: sqlAdminGroupName
     baseTags: tags
     existingTags: existingTags
     now: now
@@ -380,3 +592,15 @@ output postgreSqlAdminIdentityResourceId string = cae.outputs.postgreSqlAdminIde
 
 @description('PostgreSQL server FQDN, or empty when deployPostgreSql is false.')
 output postgreSqlFqdn string = data.outputs.postgreSqlFqdn
+
+@description('Azure SQL server FQDN, or empty when deployAzureSql is false.')
+output sqlServerFqdn string = data.outputs.sqlServerFqdn
+
+@description('Azure SQL database name, or empty when deployAzureSql is false.')
+output sqlDatabaseName string = data.outputs.sqlDatabaseName
+
+@description('Login server of the environment\'s container registry, or empty when deployDelivery is false.')
+output containerRegistryLoginServer string = deployDelivery ? delivery!.outputs.registryLoginServer : ''
+
+@description('Client id of the GitHub identity (the `client-id` the workflow passes to azure/login), or empty when deployDelivery is false.')
+output githubIdentityClientId string = deployDelivery ? delivery!.outputs.githubIdentityClientId : ''

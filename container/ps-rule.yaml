@@ -45,9 +45,14 @@ rule:
     # deployed once centralLogAnalyticsWorkspaceResourceId is set, which needs a platform grant
     # (README, "Platform grants"). Until then the vault has no audit log: a known gap, not a pass.
     - Azure.KeyVault.Logs
-    # PostgreSQL follows the Elmera estate standard (NOSP-244), which differs from the baseline on
-    # purpose. Geo-redundant backup is production-only: modules/data.bicep enables it when
-    # environmentCode is 'p', and test stays LRS (NOSD-2462). HA is out of scope estate-wide (Rune,
-    # NOSD-2425 / NOSP-244).
+    # PostgreSQL follows the estate standard, which differs from the baseline on purpose.
+    # Geo-redundant backup is production-only: modules/data.bicep enables it when environmentCode is
+    # 'p', and test stays locally redundant. HA is out of scope estate-wide.
     - Azure.PostgreSQL.GeoRedundantBackup
     - Azure.PostgreSQL.ZoneRedundantHA
+    # Azure SQL server auditing is off, as on the other estate SQL servers; monitoring is elsewhere.
+    - Azure.SQL.Auditing
+    # The registry (deployDelivery) is Standard, single-region, and reached over its public endpoint by
+    # the GitHub-hosted runners. Both rules need Premium (and a private endpoint for the export policy).
+    - Azure.ACR.GeoReplica
+    - Azure.ACR.ExportPolicy
