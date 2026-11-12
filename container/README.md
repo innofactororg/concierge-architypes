@@ -44,12 +44,16 @@ The tag values arrive through the order-tag tokens in `environments/{env}/main.b
 | `enableHubSideWrites` | Transition only, default off. Also writes the hub side and the hub route from this deployment, which needs write on the hub network resource group and makes this a second writer of objects the hub's own code owns. Do not use it where the hub creates its side from the register. |
 | `clientNetworkAddressPrefixes` | An NSG allow (443 and 31443) for client networks that reach the spoke through the hub firewall. |
 
-## Platform grants
+## Platform access
 
-Everything this architype needs outside its own subscription is a platform grant. The table lives
-in one place, [Platform grants for `container`](../README.md#platform-grants-for-container) in the
-root README, and is not repeated here. The registry pull grant is described under
-[Container images and the shared registry](#container-images-and-the-shared-registry) below.
+Everything this architype references outside its own subscription is a platform resource the deploy
+identity must be allowed to *join*. The table lives in one place,
+[Platform access for `container`](../README.md#platform-access-for-container) in the root README.
+Concierge assigns each new deploy identity the narrow custom role in
+[`platform-access-role.json`](platform-access-role.json) at stand-up, on the scopes the tenant lists
+(`platformAccess` on the target). The tenant creates the role definition once (replacing the
+placeholder assignable scopes with its own) and puts the resulting role definition id in the target.
+The role is join and A-record write only: no write on the hub, no directory right.
 
 ## Container images and the shared registry
 
@@ -58,7 +62,7 @@ root README, and is not repeated here. The registry pull grant is described unde
 - Apps pull from the tenant's **shared platform registry** using the workload identity
   (`workloadIdentityResourceId`), which needs `AcrPull` on that registry. The template outputs the
   principal id; it does not create the role assignment, because the registry is in another
-  subscription (root README, "Platform grants").
+  subscription (root README, "Platform access").
 - The template creates **no registry** and **no private endpoint or private DNS record for one**.
   `privateDnsZoneResourceIds` carries only `keyVault` and `postgreSql`.
 - The template creates **no apps**, so it does not set the `registries` identity binding on any

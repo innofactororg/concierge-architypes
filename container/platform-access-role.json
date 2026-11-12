@@ -1,0 +1,24 @@
+{
+  "Name": "Concierge Platform Join",
+  "IsCustom": true,
+  "Description": "Lets a spoke deploy identity reference shared platform resources it does not own: register private endpoint A records in a central private DNS zone, link a private DNS zone to a platform VNet, and send diagnostics to a central Log Analytics workspace. Join and record-write only: no write on the VNets, zones, or workspace themselves, and no directory right.",
+  "Actions": [
+    "Microsoft.Network/privateDnsZones/read",
+    "Microsoft.Network/privateDnsZones/join/action",
+    "Microsoft.Network/privateDnsZones/A/read",
+    "Microsoft.Network/privateDnsZones/A/write",
+    "Microsoft.Network/privateDnsZones/A/delete",
+    "Microsoft.Network/virtualNetworks/join/action",
+    "Microsoft.OperationalInsights/workspaces/read",
+    "Microsoft.OperationalInsights/workspaces/sharedKeys/action"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/<dns-subscription-id>/resourceGroups/<private-dns-zone-resource-group>",
+    "/subscriptions/<hub-subscription-id>/resourceGroups/<hub-network-resource-group>",
+    "/subscriptions/<dc-subscription-id>/resourceGroups/<dc-network-resource-group>",
+    "/subscriptions/<monitoring-subscription-id>/resourceGroups/<monitoring-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<central-workspace>"
+  ]
+}

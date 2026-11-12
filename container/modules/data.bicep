@@ -18,9 +18,12 @@
 //     private endpoint. Never VNet-integrated: networking mode is create-time-only, and a
 //     VNet-integrated server can never take a private endpoint .
 //   - PostgreSQL 18.
-//   - geo-redundant backup in production only (create-time-only; test stays LRS).
+//   - geo-redundant backup in EVERY environment, from creation (create-time-only: it cannot be
+//     switched on later). Burstable takes it (the estate's own Burstable Standard_B1ms servers run
+//     with it), so the tier does not decide it.
+//   - an explicit availability zone and Advanced Threat Protection on, as on the estate's servers.
 //   - no HA (out of scope estate-wide).
-//   - GeneralPurpose in production: Burstable cannot take geo-redundant backup.
+//   - GeneralPurpose in production, Burstable elsewhere (size, not backup).
 //   - Entra authentication only: no password to seed, store or rotate. The administrator is a
 //     dedicated identity, not the workload identity, so the apps do not run as database admin;
 //     the admin grants the workload identity its own database roles.
@@ -55,6 +58,10 @@ param postgreSqlAdminPrincipalId string
 
 @description('Name of the PostgreSQL Entra administrator identity.')
 param postgreSqlAdminName string
+
+@description('Availability zone of the PostgreSQL server, stated explicitly as on the estate\'s servers. Create-time-only: changing it moves the server.')
+@allowed(['1', '2', '3'])
+param postgreSqlAvailabilityZone string = '1'
 
 @description('Deploy the PostgreSQL Flexible Server.')
 param deployPostgreSql bool
@@ -177,7 +184,7 @@ resource keyVaultDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZone
 // Every property below marked create-time-only cannot be changed on a running server; changing
 // it later is a rebuild (dump/restore or PITR), not a pipeline run.
 
-resource postgreSql 'Microsoft.DBforPostgreSQL/flexibleServers@2025-06-01-preview' = if (deployPostgreSql) {
+resource postgreSql 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = if (deployPostgreSql) {
   name: '${spokeName}-psql-01'
   location: location
   tags: withCreatedOn(baseTags, existingTags, resourceId('Microsoft.DBforPostgreSQL/flexibleServers', '${spokeName}-psql-01'), now)
@@ -187,13 +194,15 @@ resource postgreSql 'Microsoft.DBforPostgreSQL/flexibleServers@2025-06-01-previe
   }
   properties: {
     version: '18'
+    // Explicit, as on the estate's servers; create-time-only (a change moves the server).
+    availabilityZone: postgreSqlAvailabilityZone
     storage: {
       storageSizeGB: 32
       autoGrow: 'Enabled'
     }
     backup: {
       backupRetentionDays: 7
-      geoRedundantBackup: isProduction ? 'Enabled' : 'Disabled' // create-time-only
+      geoRedundantBackup: 'Enabled' // every environment; create-time-only
     }
     highAvailability: {
       mode: 'Disabled'
@@ -216,7 +225,15 @@ resource postgreSql 'Microsoft.DBforPostgreSQL/flexibleServers@2025-06-01-previe
   }
 }
 
-resource postgreSqlAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2025-06-01-preview' = if (deployPostgreSql) {
+resource postgreSqlThreatProtection 'Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings@2024-08-01' = if (deployPostgreSql) {
+  parent: postgreSql
+  name: 'Default'
+  properties: {
+    state: 'Enabled'
+  }
+}
+
+resource postgreSqlAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = if (deployPostgreSql) {
   parent: postgreSql
   name: postgreSqlAdminPrincipalId
   properties: {

@@ -86,8 +86,8 @@ param hubGatewayRouteTableName = ''
 param clientNetworkAddressPrefixes = []
 
 // Cross-subscription resources. The order's deploy identity holds a conditioned Owner on THIS
-// subscription only, so each of these needs a platform grant before it can be set (README,
-// "Platform grants"). Left empty, the template deploys without them.
+// subscription only, so each of these needs platform access (the custom join role) before it can be set (README,
+// "Platform access"). Left empty, the template deploys without them.
 param centralLogAnalyticsWorkspaceResourceId = ''
 param dnsZoneLinkVirtualNetworkResourceIds = []
 param privateDnsZoneResourceIds = {

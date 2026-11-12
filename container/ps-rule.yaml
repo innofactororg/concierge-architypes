@@ -42,13 +42,12 @@ rule:
     - Azure.VNET.PrivateSubnet
     - Azure.Deployment.SecureParameter
     # Key Vault audit logs go to the central workspace through a diagnostic setting that is only
-    # deployed once centralLogAnalyticsWorkspaceResourceId is set, which needs a platform grant
-    # (README, "Platform grants"). Until then the vault has no audit log: a known gap, not a pass.
+    # deployed once centralLogAnalyticsWorkspaceResourceId is set. This master leaves it empty, so the rule
+    # is excluded here; a tenant that sets the workspace removes this exclusion in its own copy.
     - Azure.KeyVault.Logs
-    # PostgreSQL follows the estate standard, which differs from the baseline on purpose.
-    # Geo-redundant backup is production-only: modules/data.bicep enables it when environmentCode is
-    # 'p', and test stays locally redundant. HA is out of scope estate-wide.
-    - Azure.PostgreSQL.GeoRedundantBackup
+    # PostgreSQL follows the estate standard, which differs from the baseline on purpose: geo-redundant
+    # backup is on in every environment (so Azure.PostgreSQL.GeoRedundantBackup is no longer excluded),
+    # HA is out of scope estate-wide.
     - Azure.PostgreSQL.ZoneRedundantHA
     # Azure SQL server auditing is off, as on the other estate SQL servers; monitoring is elsewhere.
     - Azure.SQL.Auditing
