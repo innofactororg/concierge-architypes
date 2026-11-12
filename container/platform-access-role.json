@@ -18,6 +18,6 @@
     "/subscriptions/<dns-subscription-id>/resourceGroups/<private-dns-zone-resource-group>",
     "/subscriptions/<hub-subscription-id>/resourceGroups/<hub-network-resource-group>",
     "/subscriptions/<dc-subscription-id>/resourceGroups/<dc-network-resource-group>",
-    "/subscriptions/<monitoring-subscription-id>/resourceGroups/<monitoring-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<central-workspace>"
+    "/subscriptions/<monitoring-subscription-id>/resourceGroups/<monitoring-resource-group>"
   ]
 }
