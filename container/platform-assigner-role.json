@@ -1,0 +1,20 @@
+{
+  "Name": "Concierge Role Assigner",
+  "IsCustom": true,
+  "Description": "Lets the Concierge service principal create, read and delete role assignments, and nothing else. Assign it with an ABAC condition that limits the assignable role to \"Concierge Platform Join\" and the principal type to ServicePrincipal. Unlike the built-in Role Based Access Control Administrator it carries no */read, so it cannot read resources on the scope (for a Log Analytics workspace that includes querying the logs).",
+  "Actions": [
+    "Microsoft.Authorization/roleAssignments/read",
+    "Microsoft.Authorization/roleAssignments/write",
+    "Microsoft.Authorization/roleAssignments/delete",
+    "Microsoft.Authorization/roleDefinitions/read"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/<dns-subscription-id>/resourceGroups/<private-dns-zone-resource-group>",
+    "/subscriptions/<hub-subscription-id>/resourceGroups/<hub-network-resource-group>",
+    "/subscriptions/<dc-subscription-id>/resourceGroups/<dc-network-resource-group>",
+    "/subscriptions/<monitoring-subscription-id>/resourceGroups/<monitoring-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<central-workspace>"
+  ]
+}
