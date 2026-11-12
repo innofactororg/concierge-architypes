@@ -89,6 +89,13 @@ stays visible.
 | Container Apps names resolvable outside the environment | `dnsZoneLinkVirtualNetworkResourceIds` | `virtualNetworks/join/action` on each VNet the zone is linked to (the hub and DC VNets). The spoke resolves through the hub firewall DNS proxy to the DCs, so the **DC VNet** link is the one that answers. |
 | Diagnostics to the central workspace | `centralLogAnalyticsWorkspaceResourceId` | `workspaces/read` and `workspaces/sharedKeys/action` on the central workspace. The template does NOT call `listKeys()` (the Container Apps environment logs to Azure Monitor, `modules/cae.bicep`); the right is there because the workspace is the destination of the Key Vault, Container Apps and PostgreSQL diagnostic settings, and Microsoft lists exactly these two actions for "configure their resources to send logs to the Log Analytics workspace" ([Manage access to Log Analytics workspaces](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/manage-access), custom role example 3). It is the one right in the role that reads a secret (the workspace keys). Without it, Container Apps and Key Vault have no central logs (`Azure.KeyVault.Logs` is excluded in the master's `ps-rule.yaml` for this reason; a tenant that sets the workspace removes the exclusion). |
 
+The Concierge service principal itself makes those assignments, so the tenant also gives it a second custom
+role, [`container/platform-assigner-role.json`](container/platform-assigner-role.json) ("Concierge Role Assigner":
+`roleAssignments` read, write and delete, and `roleDefinitions/read`, nothing else), on the same scopes, with an
+ABAC condition that limits it to assigning the join role to service principals. It is a custom role and not the
+built-in Role Based Access Control Administrator because that role carries `*/read`, which the condition does not
+restrict: on the central workspace it would let Concierge query every log.
+
 Peering, hub routes and firewall rules belong to the hub, not to this deployment: the hub's own
 infrastructure code creates the hub side of the peering and the gateway route from the register the hub
 change adds the spoke to. **Ordering matters more here than for `network`:** from its first deploy the
