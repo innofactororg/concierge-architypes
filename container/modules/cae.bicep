@@ -12,7 +12,7 @@
 //     apps resolvable from anywhere else: the spoke's DNS servers are the firewall proxy, which
 //     forwards to the domain controllers, so it is their VNet's link that answers, not
 //     the spoke's. The reference spokes link the hub and domain-controller VNets; each is a join on another subscription's
-//     VNet, so it needs a platform grant (README, "Platform grants").
+//     VNet, so it needs a platform grant (README, "Platform access").
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 import { withCreatedOn } from 'tags.bicep'
@@ -60,6 +60,9 @@ resource postgreSqlAdminIdentity 'Microsoft.ManagedIdentity/userAssignedIdentiti
   tags: withCreatedOn(baseTags, existingTags, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', '${spokeName}-psql-01-admin-uami'), now)
 }
 
+// Preview API on purpose: `publicNetworkAccess` and `availabilityZones` are not in the Bicep types of
+// any GA version of Microsoft.App/managedEnvironments (checked up to 2025-01-01); both are used below.
+// Move to a GA version when the types carry them.
 resource environment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
   name: '${spokeName}-cae-01'
   location: location
