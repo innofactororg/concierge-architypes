@@ -47,7 +47,7 @@ current default.
 | Architype | Format | Notes |
 |---|---|---|
 | `network/` | Manifest (`schemaVersion` 1), Bicep | The **default** architype (`DefaultArchitype`): the consolidated multi-environment model — shared `main.bicep`, `environments/{env}/main.bicepparam` (folder-form), one `.pipelines/azure-pipeline.yaml`, `ps-rule.yaml`, `bicepconfig.json`. AVM from the Bicep public registry; no vendored `modules/` tree. |
-| `container/` | Manifest (`schemaVersion` 1), Bicep | Container Apps spoke, modelled on an established reference spoke: the `network` layer (same subnets, same order) plus a firewall route table and hub DNS servers, an internal zone-redundant workload-profiles Container Apps environment with a user-assigned workload identity, a private-endpoint-only Key Vault, and optional Azure SQL and PostgreSQL Flexible Server databases, an optional per-environment registry with a GitHub OIDC identity, and (off by default) hub peering and a hub route. The workload team builds the images, pushes them to the shared platform registry and registers the apps; this architype owns the platform layer only. Needs platform grants before it is complete, see [Platform grants for `container`](#platform-grants-for-container) and [`container/README.md`](container/README.md#container-images-and-the-shared-registry) for the shared-registry dependency. |
+| `container/` | Manifest (`schemaVersion` 1), Bicep | Container Apps spoke, modelled on an established reference spoke: the `network` layer (same subnets, same order) plus a firewall route table and hub DNS servers, an internal zone-redundant workload-profiles Container Apps environment with a user-assigned workload identity, a private-endpoint-only Key Vault, and optional Azure SQL and PostgreSQL Flexible Server databases, an optional per-environment registry with a GitHub OIDC identity, and (off by default) hub peering and a hub route. The workload team builds the images, pushes them to the shared platform registry and registers the apps; this architype owns the platform layer only. Needs platform access before it is complete, see [Platform access for `container`](#platform-access-for-container) and [`container/README.md`](container/README.md#container-images-and-the-shared-registry) for the shared-registry dependency. |
 | `network-terraform/` | Manifest (`schemaVersion` 1), Terraform | Terraform network architype. Declares no pipeline — Terraform under the consolidated model is deferred work. |
 | `network-arm/` | Manifest (`schemaVersion` 1), ARM (`structureVersion 3.9.1`, `containerVersion 3.0.10`) + single-file Bicep | Azure-Deploy-era network architype — legacy for Azure Repos targets, where `bicep-action` is now the deployment engine (D-14). Preserved, not promoted; see [`network-arm/README.md`](network-arm/README.md). |
 
@@ -69,26 +69,32 @@ this is a rename, not a code change — but anything that fetched the **old raw 
 lands on `main`. See `02-12-SUMMARY.md` in `concierge-app`'s `.planning/` for the pre-merge
 external-consumer check this rename required.
 
-## Platform grants for `container`
+## Platform access for `container`
 
-The order's deploy identity (`dfa_NewSpoke05bDeployIdentity`) holds `Owner` on its own new
-subscription only, conditioned so that it cannot assign Owner, User Access Administrator or RBAC
-Administrator. Everything the `container` architype needs **outside that subscription** is therefore
-a platform grant, not something the seeded pipeline can do. Each one is an empty-by-default parameter,
-so the template deploys without it and the gap stays visible:
+The order's deploy identity holds `Owner` on its own new subscription only, conditioned so that it
+cannot assign Owner, User Access Administrator or RBAC Administrator. Everything the `container`
+architype references **outside that subscription** is a platform resource the identity must be allowed
+to *join*, not to write. Concierge gives each new deploy identity that access itself, at stand-up (step
+05b, before the first plan), as ARM role assignments of one narrow custom role on the platform scopes
+the tenant lists (`platformAccess` on the target; the role is published in
+[`container/platform-access-role.json`](container/platform-access-role.json)). It is join-only and
+reads nothing else: no write on the hub, no directory write, no group membership. The parameters stay
+empty by default, so a tenant that does not grant the access deploys without these parts and the gap
+stays visible.
 
-| Need | Parameter | What the platform has to grant |
+| Need | Parameter | What the role allows, on which scope |
 |---|---|---|
-| Pull images from the shared registry (it must also already hold the images: see [`container/README.md`](container/README.md#container-images-and-the-shared-registry)) | none: the template outputs `workloadIdentityPrincipalId` | `AcrPull` (ABAC repository-scoped where the registry uses it) for the workload identity on the shared registry, the same grant the reference spokes' identities hold. Pushing from the workload team's CI is a separate identity and grant. |
-| Private endpoint A records in the central zones | `privateDnsZoneResourceIds` | `privateDnsZones/join/action` on the central `privatelink.*` zones for the deploy identity. Without it, the endpoints deploy with no DNS record and their names do not resolve. |
-| Container Apps names resolvable outside the environment | `dnsZoneLinkVirtualNetworkResourceIds` | `virtualNetworks/join/action` on the hub and DC VNets. The spoke resolves through the hub firewall DNS proxy to the DCs, so the **DC VNet** link is the one that answers. |
-| Diagnostics to the central workspace | `centralLogAnalyticsWorkspaceResourceId` | Permission to target the central workspace with a diagnostic setting. Without it, Container Apps and Key Vault have no central logs (`Azure.KeyVault.Logs` is excluded in `ps-rule.yaml` for this reason). |
+| Pull images from the shared registry (it must also already hold the images: see [`container/README.md`](container/README.md#container-images-and-the-shared-registry)) | none: the template outputs `workloadIdentityPrincipalId` | Not part of this role. `AcrPull` (ABAC repository-scoped where the registry uses it) for the workload identity on the shared registry, the same grant the reference spokes' identities hold. Pushing from the workload team's CI is a separate identity and grant. |
+| Private endpoint A records in the central zones | `privateDnsZoneResourceIds` | `privateDnsZones/read`, `join/action` and `A/read`, `A/write`, `A/delete` on the central private DNS zone resource group. Without it, the endpoints deploy with no DNS record and their names do not resolve. |
+| Container Apps names resolvable outside the environment | `dnsZoneLinkVirtualNetworkResourceIds` | `virtualNetworks/join/action` on each VNet the zone is linked to (the hub and DC VNets). The spoke resolves through the hub firewall DNS proxy to the DCs, so the **DC VNet** link is the one that answers. |
+| Diagnostics to the central workspace | `centralLogAnalyticsWorkspaceResourceId` | `workspaces/read` and `workspaces/sharedKeys/action` on the central workspace, which is what a diagnostic setting to it needs (Microsoft Learn, Azure Monitor "Manage access to Log Analytics workspaces"). Without it, Container Apps and Key Vault have no central logs (`Azure.KeyVault.Logs` is excluded in the master's `ps-rule.yaml` for this reason; a tenant that sets the workspace removes the exclusion). |
 
-Peering, hub routes and firewall rules are the hub change, as for `network`. **Ordering matters
-more here than for `network`:** from its first deploy the spoke's DNS and 0.0.0.0/0 point at the
-hub firewall, and a Container Apps environment needs working DNS and egress to provision (Microsoft
-container registries, the shared platform registry, Entra ID). Merge the hub change, including the
-firewall rules for those destinations, **before** the seeded pipeline's first deploy. The hub IPAM
+Peering, hub routes and firewall rules belong to the hub, not to this deployment: the hub's own
+infrastructure code creates the hub side of the peering and the gateway route from the register the hub
+change adds the spoke to. **Ordering matters more here than for `network`:** from its first deploy the
+spoke's DNS and 0.0.0.0/0 point at the hub firewall, and a Container Apps environment needs working DNS
+and egress to provision (Microsoft container registries, the shared platform registry, Entra ID). Until
+the hub side exists, the spoke has no path to the hub; do not order a spoke before it does. The hub IPAM
 record (`hub/ipam-spoke.yaml`) is the same as `network`'s and carries no signal that this is a
 Container Apps spoke, so the reviewer of the hub PR has to be told.
 

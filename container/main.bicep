@@ -352,7 +352,27 @@ var baselineSecurityRules = [
 // so 443 alone is dropped.
 // Priority 100 on purpose: the client networks are outside the VirtualNetwork tag, so
 // DenyInternetInbound matches them and must come after this allow (it is 110).
-var scalableSubnetSecurityRules = empty(clientNetworkAddressPrefixes) ? baselineSecurityRules : concat(baselineSecurityRules, [
+var scalableSubnetSecurityRules = concat(baselineSecurityRules, [
+  // Health probes from the Azure load balancer (168.63.129.16, tag AzureLoadBalancer). Without this
+  // DenyInternetInbound (110) drops them, the environment's internal load balancer reports 0 % backend
+  // health and no app behind it answers. Always present, whether or not client networks are set.
+  // The destination is the subnet prefix and not '*': the Deny-AnyAny-NSGRules policy rejects an Allow
+  // to '*'. Priority 105 sits between the client-network allow (100) and DenyInternetInbound (110).
+  {
+    name: 'AllowProbeFromAzureLoadBalancer'
+    properties: {
+      priority: 105
+      direction: 'Inbound'
+      access: 'Allow'
+      protocol: '*'
+      sourcePortRange: '*'
+      destinationPortRange: '*'
+      sourceAddressPrefix: 'AzureLoadBalancer'
+      destinationAddressPrefix: subnetAddressPrefixes[1]
+      description: 'Health probes from the Azure load balancer to the Container Apps node ports'
+    }
+  }
+], empty(clientNetworkAddressPrefixes) ? [] : [
   {
     name: 'AllowHttpsFromClientNetworks'
     properties: {
