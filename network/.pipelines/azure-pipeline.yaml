@@ -61,7 +61,9 @@ resources:
     - repository: bicep_action
       type: github
       name: InnofactorOrg/bicep-action
-      ref: refs/heads/main
+      # Pinned to a release tag, never a branch: a seeded spoke runs this code with an Owner service
+      # connection, so a change reaches it only through a reviewed pin bump (README, "Bumping bicep-action").
+      ref: refs/tags/v2026.11.12
       # Innofactor-Bicep-Action already exists as a GitHub service connection in the Azure DevOps project;
       # Concierge creates nothing for it (D-15). The endpoint name itself is fixed — the same
       # connection serves every workload in this ADO project — so it is a literal here rather
@@ -73,7 +75,7 @@ resources:
 #===============================================================================
 variables:
   - name: WORKFLOW_VERSION
-    value: main
+    value: v2026.11.12 # same tag as the bicep_action resource above; change both together
   - name: IN_PROVIDERS
     value: "Microsoft.Advisor,Microsoft.AlertsManagement,Microsoft.Authorization,Microsoft.Consumption,Microsoft.EventGrid,microsoft.insights,Microsoft.ManagedIdentity,Microsoft.Management,Microsoft.Network,Microsoft.PolicyInsights,Microsoft.ResourceHealth,Microsoft.Resources,Microsoft.Security"
   - name: RULE_BASELINE

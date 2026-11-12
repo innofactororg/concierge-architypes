@@ -98,6 +98,15 @@ the hub side exists, the spoke has no path to the hub; do not order a spoke befo
 record (`hub/ipam-spoke.yaml`) is the same as `network`'s and carries no signal that this is a
 Container Apps spoke, so the reviewer of the hub PR has to be told.
 
+## Bumping bicep-action
+
+Each architype pipeline pins the deployment engine to a release tag: `ref: refs/tags/<tag>` on the
+`bicep_action` repository resource and `WORKFLOW_VERSION: <tag>` (the same tag, changed together), in
+`container/.pipelines/azure-pipeline.yaml` and `network/.pipelines/azure-pipeline.yaml`. A change in
+bicep-action reaches seeded spokes only by a new bicep-action release, then a pull request here that
+changes the pin in both files (and a tenant's own copy of the architypes the same way). A repository
+that was already seeded keeps the pin it was seeded with until its own pull request changes it.
+
 ## What is deliberately not here
 
 Bicep and Terraform are the go-forward deployment types. The 2020-era ARM files carrying
